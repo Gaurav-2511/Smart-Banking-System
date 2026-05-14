@@ -1,0 +1,87 @@
+# =========================
+# Java / Spring Boot
+# =========================
+target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Maven Wrapper JAR
+.mvn/wrapper/maven-wrapper.jar
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Environment / Secrets
+# =========================
+.env
+.env.*
+application-secret.properties
+application-prod.properties
+
+# =========================
+# Eclipse / STS
+# =========================
+.project
+.classpath
+.settings/
+.springBeans
+.sts4-cache/
+
+# =========================
+# IntelliJ IDEA
+# =========================
+.idea/
+*.iml
+*.iws
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+
+# =========================
+# Angular / Node
+# =========================
+node_modules/
+dist/
+.angular/
+.cache/
+coverage/
+npm-debug.log
+yarn-error.log
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Backend specific
+# =========================
+smart-banking-backend/target/
+smart-banking-backend/.metadata/
+smart-banking-backend/.settings/
+smart-banking-backend/.classpath
+smart-banking-backend/.project
+
+# =========================
+# Frontend specific
+# =========================
+smart-banking-frontend/node_modules/
+smart-banking-frontend/dist/
+smart-banking-frontend/.angular/
+smart-banking-frontend/.cache/
+smart-banking-frontend/.vscode/
+
+# =========================
+# Temporary Files
+# =========================
+*.tmp
+*.bak

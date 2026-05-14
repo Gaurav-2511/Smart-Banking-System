@@ -1,0 +1,943 @@
+You are my Java Spring Boot + Angular Full Stack Project Mentor.
+
+I am building a resume-level project:
+
+PROJECT NAME:
+Smart Banking System
+
+LANGUAGE STYLE:
+Explain in simple English + Marathi/Hinglish mix.
+Use beginner-friendly explanation.
+Give step-by-step implementation.
+Do not skip small steps.
+Whenever giving code, give complete file path and complete code.
+Use clean architecture and industry-level project structure.
+
+TECH STACK:
+Backend:
+- Java 17
+- Spring Boot 3.x
+- Spring Web
+- Spring Security 6
+- JWT Authentication
+- Spring Data JPA / Hibernate
+- MySQL 8
+- Maven
+- Lombok
+- Validation
+- Java Mail Sender
+- OpenPDF / iText for PDF
+- Swagger / SpringDoc
+- Global Exception Handling
+- DTO Pattern
+- Service Interface + ServiceImpl Pattern
+
+Frontend:
+- Angular 17+ / Angular 21
+- Standalone Components
+- TypeScript
+- Bootstrap 5
+- Angular Material if needed
+- Chart.js / ng2-charts
+- JWT Interceptor
+- Auth Guard
+- Role Guard
+
+TOOLS:
+- Eclipse / IntelliJ for backend
+- VS Code for frontend
+- MySQL Workbench
+- Postman
+- Git & GitHub
+
+PROJECT GOAL:
+Build a secure banking system where users can register/login, create bank accounts, deposit, withdraw, transfer money, view transaction history, download mini statements, and admin can manage users/accounts/transactions/fraud monitoring.
+
+IMPORTANT CODING RULES:
+1. Use DTOs. Do not expose entities directly.
+2. Use service interface and service implementation.
+3. Use proper package structure.
+4. Use GlobalExceptionHandler.
+5. Use validation annotations.
+6. Use JWT + BCrypt.
+7. Use role-based access: USER and ADMIN.
+8. Use @Transactional for fund transfer.
+9. Give Postman testing steps after every backend phase.
+10. Give GitHub commit message after every phase.
+11. Keep project beginner-friendly but resume-level.
+12. Explain every important concept in English + Marathi/Hinglish.
+
+BACKEND PACKAGE STRUCTURE:
+com.smartbanking
+
+- config
+- security
+- exception
+- user
+  - entity
+  - repository
+  - dto
+  - service
+  - service.impl
+  - controller
+- account
+  - entity
+  - repository
+  - dto
+  - service
+  - service.impl
+  - controller
+- transaction
+  - entity
+  - repository
+  - dto
+  - service
+  - service.impl
+  - controller
+- admin
+  - dto
+  - service
+  - service.impl
+  - controller
+- notification
+- pdf
+- util
+
+FRONTEND STRUCTURE:
+src/app
+
+- core
+  - services
+  - guards
+  - interceptors
+  - models
+- features
+  - auth
+  - user
+  - admin
+  - account
+  - transaction
+- shared
+  - navbar
+  - footer
+  - components
+
+PHASE WORKFLOW:
+I will give you a phase prompt.
+You must implement only that phase.
+At the end of every phase, provide:
+1. Files created/updated
+2. What was implemented
+3. APIs created
+4. How to test in Postman/browser
+5. Common errors and fixes
+6. Git commands to push this phase
+7. Updated PROGRESS SUMMARY for next phase
+
+Do not jump to next phase unless I ask.
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+🚀 Starting Smart Banking System Project
+
+PHASE 1: Requirement Analysis + GitHub Repository Setup
+
+I want to build a resume-level Smart Banking System using Java Spring Boot, Angular, MySQL, JWT, and GitHub.
+
+Please help me with:
+
+1. Complete project overview
+2. Functional requirements
+3. User module requirements
+4. Admin module requirements
+5. Banking operations requirements:
+   - Account creation
+   - Deposit
+   - Withdraw
+   - Fund transfer
+   - Transaction history
+   - Mini statement PDF
+6. Non-functional requirements:
+   - Security
+   - Validation
+   - Exception handling
+   - Logging
+   - Performance
+7. Final module list
+8. Recommended GitHub repository name
+9. GitHub repository description
+10. Folder structure for monorepo:
+    - smart-banking-backend
+    - smart-banking-frontend
+11. Complete .gitignore file for Spring Boot + Angular
+12. First GitHub push commands
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 2.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ GitHub repository planned
+✅ Monorepo structure planned
+✅ Modules finalized
+
+PHASE 2: Spring Boot Backend Setup
+
+Now help me create backend project.
+
+Requirements:
+1. Create Spring Boot project setup
+2. Project name: smart-banking-backend
+3. Package name: com.smartbanking
+4. Use Java 17
+5. Add dependencies:
+   - Spring Web
+   - Spring Security
+   - Spring Data JPA
+   - MySQL Driver
+   - Lombok
+   - Validation
+   - Java Mail Sender
+   - SpringDoc OpenAPI Swagger
+   - JWT dependencies
+   - OpenPDF/iText
+6. Give complete pom.xml
+7. Give application.properties for MySQL
+8. Create basic package structure
+9. Create test HealthController API
+10. Explain how to run backend
+11. Explain how to test in browser/Postman
+12. Give Git commands to push Phase 2
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 3.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Spring Boot backend setup done
+✅ Backend running successfully
+✅ MySQL connection configured
+✅ Basic Health API tested
+
+PHASE 3: Database Design, Entities, Enums, Repositories
+
+Now implement database layer.
+
+Requirements:
+1. Create User entity
+2. Create BankAccount entity
+3. Create Transaction entity
+4. Create enums:
+   - Role: USER, ADMIN
+   - AccountType: SAVINGS, CURRENT
+   - AccountStatus: ACTIVE, FROZEN, CLOSED
+   - TransactionType: DEPOSIT, WITHDRAW, TRANSFER
+   - TransactionStatus: SUCCESS, FAILED, PENDING
+5. Relationships:
+   - One User can have many BankAccounts
+   - One BankAccount can have many Transactions
+6. Add createdAt and updatedAt where needed
+7. Create repositories
+8. Use proper annotations
+9. Explain database tables
+10. Explain relationships in simple language
+11. Show MySQL expected tables
+12. Give Git commands to push Phase 3
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 4.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Database design, entities, enums, and repositories done
+
+PHASE 4: Authentication Module with JWT + Spring Security
+
+Now implement authentication and security.
+
+Requirements:
+1. Register API
+2. Login API
+3. BCrypt password encryption
+4. JWT token generation
+5. JWT filter
+6. SecurityConfig
+7. UserDetailsService implementation
+8. Auth DTOs:
+   - RegisterRequest
+   - LoginRequest
+   - AuthResponse
+9. Role-based access:
+   - USER
+   - ADMIN
+10. GlobalExceptionHandler
+11. ApiResponse common response structure
+12. Validation
+13. Postman testing:
+   - Register user
+   - Login user
+   - Get JWT token
+14. Explain JWT flow in simple language
+15. Give Git commands to push Phase 4
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 5.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Entities and repositories done
+✅ Phase 4 Complete: Register/Login with JWT Security done
+
+PHASE 5: Bank Account Management Module
+
+Now implement account module.
+
+Requirements:
+1. Logged-in user can create bank account
+2. User can view own accounts
+3. User can check account balance
+4. Account number should auto-generate
+5. Initial balance should be 0
+6. Account status should be ACTIVE by default
+7. User cannot access another user's account
+8. Create DTOs:
+   - AccountCreateRequest
+   - AccountResponse
+   - BalanceResponse
+9. APIs:
+   - POST /api/accounts
+   - GET /api/accounts/my
+   - GET /api/accounts/{accountId}/balance
+10. Use JWT logged-in user instead of passing userId manually
+11. Add validations and exceptions
+12. Postman testing with Bearer token
+13. Give Git commands to push Phase 5
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 6.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Database design done
+✅ Phase 4 Complete: JWT Authentication done
+✅ Phase 5 Complete: Account Management Module done
+
+PHASE 6: Banking Transaction Module
+
+Now implement banking operations.
+
+Requirements:
+1. Deposit money
+2. Withdraw money
+3. Fund transfer from one account to another
+4. Use @Transactional for transfer
+5. Validate:
+   - Amount must be greater than 0
+   - Account must be ACTIVE
+   - User can withdraw only from own account
+   - Sender must have sufficient balance
+   - Receiver account must exist
+6. Save transaction records
+7. Create DTOs:
+   - DepositRequest
+   - WithdrawRequest
+   - TransferRequest
+   - TransactionResponse
+8. APIs:
+   - POST /api/transactions/deposit
+   - POST /api/transactions/withdraw
+   - POST /api/transactions/transfer
+9. Explain @Transactional in simple language
+10. Postman testing step-by-step
+11. Common errors and fixes
+12. Give Git commands to push Phase 6
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 7.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Entities and DB design done
+✅ Phase 4 Complete: JWT Authentication done
+✅ Phase 5 Complete: Account Management done
+✅ Phase 6 Complete: Deposit, Withdraw, and Fund Transfer done
+
+PHASE 7: Transaction History + Mini Statement
+
+Now implement transaction history features.
+
+Requirements:
+1. User can view own transactions
+2. User can view transactions by account
+3. Filter transactions by:
+   - Date range
+   - Transaction type
+4. Add pagination
+5. Mini statement API
+6. APIs:
+   - GET /api/transactions/my
+   - GET /api/transactions/account/{accountId}
+   - GET /api/transactions/account/{accountId}/mini-statement
+7. User cannot view other user's transactions
+8. Proper DTO response
+9. Postman testing
+10. Give Git commands to push Phase 7
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 8.
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Database design done
+✅ Phase 4 Complete: JWT Authentication done
+✅ Phase 5 Complete: Account Management done
+✅ Phase 6 Complete: Transaction Module done
+✅ Phase 7 Complete: Transaction History and Mini Statement done
+
+PHASE 8: Admin Module
+
+Now implement admin features.
+
+Requirements:
+1. Admin can view all users
+2. Admin can view all accounts
+3. Admin can freeze account
+4. Admin can activate account
+5. Admin can view all transactions
+6. Admin dashboard stats:
+   - Total users
+   - Total accounts
+   - Active accounts
+   - Frozen accounts
+   - Total transactions
+   - Total deposited amount
+   - Total withdrawn amount
+7. APIs:
+   - GET /api/admin/users
+   - GET /api/admin/accounts
+   - PUT /api/admin/accounts/{accountId}/freeze
+   - PUT /api/admin/accounts/{accountId}/activate
+   - GET /api/admin/transactions
+   - GET /api/admin/dashboard
+8. Only ADMIN role can access these APIs
+9. Postman testing with admin token
+10. Give Git commands to push Phase 8
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 9.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Database design done
+✅ Phase 4 Complete: JWT Authentication done
+✅ Phase 5 Complete: Account Management done
+✅ Phase 6 Complete: Banking Transactions done
+✅ Phase 7 Complete: Transaction History done
+✅ Phase 8 Complete: Admin Module done
+
+PHASE 9: Email Notification Module
+
+Now implement email notification feature.
+
+Requirements:
+1. Send email after registration
+2. Send email after deposit
+3. Send email after withdraw
+4. Send email after fund transfer
+5. Use JavaMailSender
+6. Create EmailService
+7. Configure Gmail SMTP safely
+8. Do not expose password in GitHub
+9. Use application-secret.properties or environment variables
+10. Explain how to generate Gmail App Password
+11. Show testing steps
+12. Give Git commands to push Phase 9
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 10.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Entities and DB done
+✅ Phase 4 Complete: JWT Security done
+✅ Phase 5 Complete: Account Module done
+✅ Phase 6 Complete: Transaction Module done
+✅ Phase 7 Complete: Transaction History done
+✅ Phase 8 Complete: Admin Module done
+✅ Phase 9 Complete: Email Notification done
+
+PHASE 10: PDF Mini Statement / Account Statement
+
+Now implement PDF statement generation.
+
+Requirements:
+1. Generate mini statement PDF
+2. Generate full account statement PDF
+3. Use OpenPDF or iText
+4. PDF should include:
+   - Bank name
+   - User name
+   - Account number
+   - Account type
+   - Current balance
+   - Transaction table
+   - Date
+5. APIs:
+   - GET /api/statements/account/{accountId}/mini/pdf
+   - GET /api/statements/account/{accountId}/full/pdf
+6. User can download only own account statement
+7. Admin can download any account statement if needed
+8. Explain PDF generation flow
+9. Test in browser/Postman
+10. Give Git commands to push Phase 10
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 11.
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Backend Phase 1 to 10 Complete
+✅ JWT Authentication done
+✅ Account Module done
+✅ Transaction Module done
+✅ Admin Module done
+✅ Email Notification done
+✅ PDF Statement done
+✅ Backend APIs tested in Postman
+
+PHASE 11: Angular Frontend Setup
+
+Now create Angular frontend.
+
+Requirements:
+1. Create Angular project:
+   smart-banking-frontend
+2. Use standalone components
+3. Install Bootstrap 5
+4. Setup routing
+5. Create folder structure:
+   - core/services
+   - core/guards
+   - core/interceptors
+   - core/models
+   - features/auth
+   - features/user
+   - features/admin
+   - features/account
+   - features/transaction
+   - shared/navbar
+6. Create environment.ts with backend API URL
+7. Create basic navbar
+8. Create login/register routes placeholder
+9. Explain Angular folder structure
+10. Run frontend successfully
+11. Give Git commands to push Phase 11
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 12.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Backend complete up to PDF Statement
+✅ Phase 11 Complete: Angular frontend setup done
+✅ Angular routing and folder structure created
+✅ Bootstrap added
+
+PHASE 12: Angular Register/Login Integration
+
+Now implement frontend authentication.
+
+Requirements:
+1. Create auth models
+2. Create AuthService
+3. Register API integration
+4. Login API integration
+5. Store JWT token, name, email, role in localStorage
+6. Create JWT interceptor
+7. Create AuthGuard
+8. Create RoleGuard
+9. Create GuestGuard
+10. USER redirects to /user/dashboard
+11. ADMIN redirects to /admin/dashboard
+12. Logged-in users cannot access login/register
+13. Navbar logout
+14. Show success/error messages
+15. Test complete auth flow
+16. Give Git commands to push Phase 12
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 13.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Backend complete up to PDF Statement
+✅ Angular frontend setup done
+✅ Angular Auth integration done
+✅ JWT interceptor, AuthGuard, RoleGuard, GuestGuard done
+
+PHASE 13: Angular User Banking Module
+
+Now implement user banking features in Angular.
+
+Requirements:
+1. User dashboard
+2. Create bank account page
+3. My accounts page
+4. Check balance
+5. Deposit page
+6. Withdraw page
+7. Transfer money page
+8. Transaction history page
+9. Mini statement download button
+10. Services:
+    - AccountService
+    - TransactionService
+    - StatementService
+11. Use Bootstrap cards/tables/forms
+12. Add validations
+13. Show loading/error/success messages
+14. Test user flow:
+    - Login
+    - Create account
+    - Deposit
+    - Withdraw
+    - Transfer
+    - View transactions
+    - Download PDF
+15. Give Git commands to push Phase 13
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 14.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Backend complete up to PDF Statement
+✅ Angular Auth integration done
+✅ Angular User Banking Module done
+
+PHASE 14: Angular Admin Module
+
+Now implement admin dashboard and admin management pages.
+
+Requirements:
+1. Admin dashboard
+2. Dashboard stats cards
+3. View all users
+4. View all accounts
+5. Freeze account
+6. Activate account
+7. View all transactions
+8. Fraud monitoring placeholder
+9. Charts if possible
+10. AdminService
+11. Only ADMIN can access admin routes
+12. Bootstrap responsive UI
+13. Test admin flow
+14. Give Git commands to push Phase 14
+
+Explain in English + Marathi/Hinglish.
+At the end give updated PROGRESS SUMMARY for Phase 15.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PROGRESS SUMMARY:
+✅ Phase 1 Complete: Requirement analysis done
+✅ Phase 2 Complete: Backend setup done
+✅ Phase 3 Complete: Database design done
+✅ Phase 4 Complete: JWT Authentication done
+✅ Phase 5 Complete: Account Management done
+✅ Phase 6 Complete: Banking Transactions done
+✅ Phase 7 Complete: Transaction History done
+✅ Phase 8 Complete: Admin Module done
+✅ Phase 9 Complete: Email Notification done
+✅ Phase 10 Complete: PDF Statement done
+✅ Phase 11 Complete: Angular Setup done
+✅ Phase 12 Complete: Angular Auth done
+✅ Phase 13 Complete: Angular User Module done
+✅ Phase 14 Complete: Angular Admin Module done
+
+PHASE 15: Final Polish, README, GitHub, Resume Content
+
+Now finalize the project.
+
+Requirements:
+1. Clean UI polish
+2. Add screenshots section
+3. Create professional README.md
+4. Add project features
+5. Add tech stack
+6. Add backend setup steps
+7. Add frontend setup steps
+8. Add API documentation
+9. Add database setup
+10. Add GitHub description
+11. Add resume project description
+12. Add resume bullet points
+13. Add interview explanation
+14. Add final GitHub push commands
+
+Explain in English + Marathi/Hinglish.
+
+
+
+
+
+✅ GitHub Repo Name - 
+Smart-Banking-System
+
+
+✅ GitHub Description
+A secure full-stack banking application built with Java Spring Boot, Angular, MySQL, JWT Authentication, Role-Based Access, Transaction Management, Email Notifications, and PDF Statements.
