@@ -85,3 +85,6 @@ smart-banking-frontend/.vscode/
 # =========================
 *.tmp
 *.bak
+
+.md
+.txt
