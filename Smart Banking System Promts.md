@@ -6064,6 +6064,1536 @@ At the end give updated PROGRESS SUMMARY for Phase 5.
 
 ### Ans=========>
 
+Gaurav, **Phase 4: Authentication Module with JWT + Spring Security** सुरू करूया ✅
+या phase मध्ये आपण uploaded prompt नुसार **Register API, Login API, BCrypt password encryption, JWT generation/filter, SecurityConfig, UserDetailsService, GlobalExceptionHandler, ApiResponse, Validation आणि Postman testing** implement करणार आहोत. 
+
+Spring Security मध्ये `PasswordEncoder` password ला one-way secure form मध्ये transform करतो, म्हणजे database मध्ये plain password save होत नाही. ([Home][1]) JJWT library Java मध्ये JWT create आणि verify करण्यासाठी वापरतो. ([GitHub][2])
+
+---
+
+# PHASE 4: JWT Authentication Module
+
+## Final APIs in this phase
+
+```text
+POST /api/users/register
+POST /api/users/login
+GET  /api/users/profile
+```
+
+`/profile` हा protected API आहे. JWT token properly work होतोय का test करण्यासाठी हा API useful आहे.
+
+---
+
+# 1. Create Common ApiResponse
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/util/ApiResponse.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.util;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class ApiResponse<T> {
+
+    private boolean success;
+    private String message;
+    private T data;
+    private LocalDateTime timestamp;
+
+    public static <T> ApiResponse<T> success(String message, T data) {
+        return ApiResponse.<T>builder()
+                .success(true)
+                .message(message)
+                .data(data)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> error(String message) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .data(null)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+
+    public static <T> ApiResponse<T> error(String message, T data) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .data(data)
+                .timestamp(LocalDateTime.now())
+                .build();
+    }
+}
+```
+
+Simple meaning:
+API response प्रत्येक वेळी same format मध्ये येईल.
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {},
+  "timestamp": "..."
+}
+```
+
+---
+
+# 2. Create Custom Exceptions
+
+## 2.1 BadRequestException
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/exception/BadRequestException.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.exception;
+
+public class BadRequestException extends RuntimeException {
+
+    public BadRequestException(String message) {
+        super(message);
+    }
+}
+```
+
+---
+
+## 2.2 ResourceNotFoundException
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/exception/ResourceNotFoundException.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.exception;
+
+public class ResourceNotFoundException extends RuntimeException {
+
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+---
+
+# 3. Create GlobalExceptionHandler
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/exception/GlobalExceptionHandler.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.exception;
+
+import com.smartbanking.util.ApiResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.security.access.AccessDeniedException;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<ApiResponse<Object>> handleBadRequestException(BadRequestException ex) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiResponse<Object>> handleResourceNotFoundException(ResourceNotFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(UsernameNotFoundException.class)
+    public ResponseEntity<ApiResponse<Object>> handleUsernameNotFoundException(UsernameNotFoundException ex) {
+        return ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ApiResponse<Object>> handleBadCredentialsException(BadCredentialsException ex) {
+        return ResponseEntity
+                .status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid email or password"));
+    }
+
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<ApiResponse<Object>> handleAccessDeniedException(Exception ex) {
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("You do not have permission to access this API"));
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
+            MethodArgumentNotValidException ex
+    ) {
+        Map<String, String> errors = new HashMap<>();
+
+        ex.getBindingResult().getFieldErrors().forEach(error ->
+                errors.put(error.getField(), error.getDefaultMessage())
+        );
+
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("Validation failed", errors));
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<ApiResponse<Object>> handleGlobalException(Exception ex) {
+        return ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("Something went wrong: " + ex.getMessage()));
+    }
+}
+```
+
+---
+
+# 4. Create Auth DTOs
+
+## 4.1 RegisterRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/RegisterRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.user.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+@Data
+public class RegisterRequest {
+
+    @NotBlank(message = "Name is required")
+    @Size(min = 2, max = 100, message = "Name must be between 2 to 100 characters")
+    private String name;
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Please enter a valid email address")
+    @Size(max = 150, message = "Email must not exceed 150 characters")
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    @Size(min = 6, max = 40, message = "Password must be between 6 to 40 characters")
+    private String password;
+}
+```
+
+Important:
+Public register API मधून आपण default role `USER` ठेवणार आहोत. Banking system मध्ये कोणालाही direct ADMIN register करू देणे secure नाही.
+
+---
+
+## 4.2 LoginRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/LoginRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.user.dto;
+
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import lombok.Data;
+
+@Data
+public class LoginRequest {
+
+    @NotBlank(message = "Email is required")
+    @Email(message = "Please enter a valid email address")
+    private String email;
+
+    @NotBlank(message = "Password is required")
+    private String password;
+}
+```
+
+---
+
+## 4.3 AuthResponse
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/AuthResponse.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.user.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class AuthResponse {
+
+    private String token;
+
+    @Builder.Default
+    private String tokenType = "Bearer";
+
+    private Long userId;
+    private String name;
+    private String email;
+    private String role;
+}
+```
+
+---
+
+## 4.4 UserProfileResponse
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/UserProfileResponse.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.user.dto;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class UserProfileResponse {
+
+    private Long userId;
+    private String name;
+    private String email;
+    private String role;
+    private LocalDateTime createdAt;
+}
+```
+
+---
+
+# 5. Create JWT Service
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/security/JwtService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.security;
+
+import com.smartbanking.user.entity.User;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.stereotype.Service;
+
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class JwtService {
+
+    @Value("${app.jwt.secret}")
+    private String jwtSecret;
+
+    @Value("${app.jwt.expiration}")
+    private long jwtExpiration;
+
+    public String generateToken(User user) {
+
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", user.getId());
+        claims.put("name", user.getName());
+        claims.put("role", user.getRole().name());
+
+        return Jwts.builder()
+                .claims(claims)
+                .subject(user.getEmail())
+                .issuedAt(new Date(System.currentTimeMillis()))
+                .expiration(new Date(System.currentTimeMillis() + jwtExpiration))
+                .signWith(getSigningKey(), Jwts.SIG.HS256)
+                .compact();
+    }
+
+    public String extractUsername(String token) {
+        return extractAllClaims(token).getSubject();
+    }
+
+    public boolean isTokenValid(String token, UserDetails userDetails) {
+        String username = extractUsername(token);
+
+        return username.equals(userDetails.getUsername()) && !isTokenExpired(token);
+    }
+
+    private boolean isTokenExpired(String token) {
+        Date expirationDate = extractAllClaims(token).getExpiration();
+
+        return expirationDate.before(new Date());
+    }
+
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser()
+                .verifyWith(getSigningKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
+    }
+
+    private SecretKey getSigningKey() {
+        byte[] keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+
+        return Keys.hmacShaKeyFor(keyBytes);
+    }
+}
+```
+
+---
+
+# 6. Create CustomUserDetailsService
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/security/CustomUserDetailsService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.security;
+
+import com.smartbanking.user.entity.User;
+import com.smartbanking.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class CustomUserDetailsService implements UserDetailsService {
+
+    private final UserRepository userRepository;
+
+    /*
+     * Spring Security login time email la username treat karto.
+     * So username parameter madhe email येईल.
+     */
+    @Override
+    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + email));
+
+        return org.springframework.security.core.userdetails.User
+                .builder()
+                .username(user.getEmail())
+                .password(user.getPassword())
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
+                .build();
+    }
+}
+```
+
+Important:
+`hasRole("ADMIN")` internally `ROLE_ADMIN` check करतो. म्हणून आपण authority `"ROLE_" + role` देतो.
+
+---
+
+# 7. Create JwtAuthenticationFilter
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/security/JwtAuthenticationFilter.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.security;
+
+import io.jsonwebtoken.JwtException;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.lang.NonNull;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+
+@Component
+@RequiredArgsConstructor
+public class JwtAuthenticationFilter extends OncePerRequestFilter {
+
+    private final JwtService jwtService;
+    private final CustomUserDetailsService customUserDetailsService;
+
+    @Override
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain
+    ) throws ServletException, IOException {
+
+        final String authHeader = request.getHeader("Authorization");
+
+        /*
+         * If Authorization header missing असेल किंवा Bearer token नसेल,
+         * तर पुढच्या filter ला request पाठवतो.
+         */
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        try {
+            final String jwtToken = authHeader.substring(7);
+            final String userEmail = jwtService.extractUsername(jwtToken);
+
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
+                UserDetails userDetails = customUserDetailsService.loadUserByUsername(userEmail);
+
+                if (jwtService.isTokenValid(jwtToken, userDetails)) {
+
+                    UsernamePasswordAuthenticationToken authenticationToken =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails,
+                                    null,
+                                    userDetails.getAuthorities()
+                            );
+
+                    authenticationToken.setDetails(
+                            new WebAuthenticationDetailsSource().buildDetails(request)
+                    );
+
+                    SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+                }
+            }
+
+            filterChain.doFilter(request, response);
+
+        } catch (JwtException | IllegalArgumentException ex) {
+
+            SecurityContextHolder.clearContext();
+
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+
+            response.getWriter().write("""
+                    {
+                      "success": false,
+                      "message": "Invalid or expired JWT token",
+                      "data": null
+                    }
+                    """);
+        }
+    }
+}
+```
+
+---
+
+# 8. Update SecurityConfig
+
+तुझ्या Phase 2 मधील existing `SecurityConfig.java` replace कर.
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/config/SecurityConfig.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.config;
+
+import com.smartbanking.security.CustomUserDetailsService;
+import com.smartbanking.security.JwtAuthenticationFilter;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+@Configuration
+@EnableWebSecurity
+@EnableMethodSecurity
+@RequiredArgsConstructor
+public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final CustomUserDetailsService customUserDetailsService;
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
+        http
+                /*
+                 * REST API मध्ये CSRF disable ठेवतो.
+                 * कारण आपण session-based auth वापरत नाही, JWT वापरतो.
+                 */
+                .csrf(AbstractHttpConfigurer::disable)
+
+                /*
+                 * Later Angular frontend साठी CORS enable helpful राहील.
+                 */
+                .cors(Customizer.withDefaults())
+
+                /*
+                 * JWT stateless असतो.
+                 * Backend server session maintain करत नाही.
+                 */
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+
+                .authorizeHttpRequests(auth -> auth
+
+                        /*
+                         * Public APIs
+                         */
+                        .requestMatchers(
+                                "/api/health",
+                                "/api/health/**",
+                                "/api/users/register",
+                                "/api/users/login",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**"
+                        ).permitAll()
+
+                        /*
+                         * Future Admin APIs
+                         */
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        /*
+                         * Any other API requires login
+                         */
+                        .anyRequest().authenticated()
+                )
+
+                .authenticationProvider(authenticationProvider())
+
+                /*
+                 * JWT filter Spring Security username-password filter आधी run होईल.
+                 */
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+
+                .httpBasic(AbstractHttpConfigurer::disable)
+                .formLogin(AbstractHttpConfigurer::disable);
+
+        return http.build();
+    }
+
+    @Bean
+    public AuthenticationProvider authenticationProvider() {
+
+        DaoAuthenticationProvider authProvider =
+                new DaoAuthenticationProvider(customUserDetailsService);
+
+        authProvider.setPasswordEncoder(passwordEncoder());
+
+        return authProvider;
+    }
+
+    @Bean
+    public AuthenticationManager authenticationManager(AuthenticationConfiguration configuration)
+            throws Exception {
+
+        return configuration.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+
+        return new BCryptPasswordEncoder();
+    }
+}
+```
+
+Spring Security docs सांगतात की `DaoAuthenticationProvider` username/password authentication साठी `UserDetailsService` आणि `PasswordEncoder` वापरतो. ([Home][3])
+
+---
+
+# 9. Create AuthService Interface
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/service/AuthService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.user.service;
+
+import com.smartbanking.user.dto.AuthResponse;
+import com.smartbanking.user.dto.LoginRequest;
+import com.smartbanking.user.dto.RegisterRequest;
+import com.smartbanking.user.dto.UserProfileResponse;
+
+public interface AuthService {
+
+    AuthResponse register(RegisterRequest request);
+
+    AuthResponse login(LoginRequest request);
+
+    UserProfileResponse getProfile(String email);
+}
+```
+
+---
+
+# 10. Create AuthServiceImpl
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/service/impl/AuthServiceImpl.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.user.service.impl;
+
+import com.smartbanking.exception.BadRequestException;
+import com.smartbanking.exception.ResourceNotFoundException;
+import com.smartbanking.security.JwtService;
+import com.smartbanking.user.dto.AuthResponse;
+import com.smartbanking.user.dto.LoginRequest;
+import com.smartbanking.user.dto.RegisterRequest;
+import com.smartbanking.user.dto.UserProfileResponse;
+import com.smartbanking.user.entity.Role;
+import com.smartbanking.user.entity.User;
+import com.smartbanking.user.repository.UserRepository;
+import com.smartbanking.user.service.AuthService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+@Service
+@RequiredArgsConstructor
+public class AuthServiceImpl implements AuthService {
+
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final AuthenticationManager authenticationManager;
+
+    @Override
+    public AuthResponse register(RegisterRequest request) {
+
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new BadRequestException("Email already registered");
+        }
+
+        User user = User.builder()
+                .name(request.getName())
+                .email(request.getEmail())
+                .password(passwordEncoder.encode(request.getPassword()))
+                .role(Role.USER)
+                .build();
+
+        User savedUser = userRepository.save(user);
+
+        String token = jwtService.generateToken(savedUser);
+
+        return AuthResponse.builder()
+                .token(token)
+                .tokenType("Bearer")
+                .userId(savedUser.getId())
+                .name(savedUser.getName())
+                .email(savedUser.getEmail())
+                .role(savedUser.getRole().name())
+                .build();
+    }
+
+    @Override
+    public AuthResponse login(LoginRequest request) {
+
+        /*
+         * AuthenticationManager password automatically BCrypt hash sobat compare karto.
+         * Password match नसेल तर BadCredentialsException throw होईल.
+         */
+        authenticationManager.authenticate(
+                new UsernamePasswordAuthenticationToken(
+                        request.getEmail(),
+                        request.getPassword()
+                )
+        );
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        String token = jwtService.generateToken(user);
+
+        return AuthResponse.builder()
+                .token(token)
+                .tokenType("Bearer")
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .build();
+    }
+
+    @Override
+    public UserProfileResponse getProfile(String email) {
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        return UserProfileResponse.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .createdAt(user.getCreatedAt())
+                .build();
+    }
+}
+```
+
+---
+
+# 11. Create UserController
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/user/controller/UserController.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.user.controller;
+
+import com.smartbanking.user.dto.AuthResponse;
+import com.smartbanking.user.dto.LoginRequest;
+import com.smartbanking.user.dto.RegisterRequest;
+import com.smartbanking.user.dto.UserProfileResponse;
+import com.smartbanking.user.service.AuthService;
+import com.smartbanking.util.ApiResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/users")
+@RequiredArgsConstructor
+public class UserController {
+
+    private final AuthService authService;
+
+    @PostMapping("/register")
+    public ResponseEntity<ApiResponse<AuthResponse>> register(
+            @Valid @RequestBody RegisterRequest request
+    ) {
+
+        AuthResponse response = authService.register(request);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("User registered successfully", response));
+    }
+
+    @PostMapping("/login")
+    public ResponseEntity<ApiResponse<AuthResponse>> login(
+            @Valid @RequestBody LoginRequest request
+    ) {
+
+        AuthResponse response = authService.login(request);
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Login successful", response));
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<ApiResponse<UserProfileResponse>> getProfile(
+            Authentication authentication
+    ) {
+
+        String email = authentication.getName();
+
+        UserProfileResponse response = authService.getProfile(email);
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Profile fetched successfully", response));
+    }
+}
+```
+
+---
+
+# 12. Check application.properties
+
+तुझ्या `application.properties` मध्ये हे असणे गरजेचे आहे.
+
+## File Path
+
+```text
+smart-banking-backend/src/main/resources/application.properties
+```
+
+## Required JWT Properties
+
+```properties
+# ===============================
+# JWT Configuration
+# ===============================
+app.jwt.secret=smartBankingSystemSecretKeyForJwtAuthenticationChangeThisLater123456789
+app.jwt.expiration=86400000
+```
+
+`86400000` म्हणजे 24 hours in milliseconds.
+
+---
+
+# 13. JWT Flow Simple Explanation
+
+## Register Flow
+
+```text
+User name/email/password पाठवतो
+        ↓
+Backend email duplicate आहे का check करतो
+        ↓
+Password BCrypt ने encrypt/hash होतो
+        ↓
+User database मध्ये save होतो
+        ↓
+JWT token generate होतो
+        ↓
+Response मध्ये token return होतो
+```
+
+## Login Flow
+
+```text
+User email/password पाठवतो
+        ↓
+Spring Security user email database मधून fetch करतो
+        ↓
+BCrypt password compare करतो
+        ↓
+Correct असेल तर JWT token generate होतो
+        ↓
+Frontend token localStorage मध्ये store करेल
+```
+
+## Protected API Flow
+
+```text
+Frontend request header मध्ये token पाठवेल
+Authorization: Bearer <token>
+        ↓
+JwtAuthenticationFilter token verify करतो
+        ↓
+Token valid असेल तर user authenticated होतो
+        ↓
+API access मिळतो
+```
+
+---
+
+# 14. Postman Testing
+
+## Step 1: Run Backend
+
+```bash
+cd smart-banking-backend
+mvn spring-boot:run
+```
+
+किंवा Eclipse:
+
+```text
+SmartBankingBackendApplication.java
+Right click
+Run As -> Spring Boot App
+```
+
+---
+
+## Step 2: Register User
+
+### Request
+
+```http
+POST http://localhost:8080/api/users/register
+```
+
+### Headers
+
+```text
+Content-Type: application/json
+```
+
+### Body
+
+```json
+{
+  "name": "Gaurav Lahamage",
+  "email": "gaurav@gmail.com",
+  "password": "gaurav123"
+}
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "User registered successfully",
+  "data": {
+    "token": "jwt-token-here",
+    "tokenType": "Bearer",
+    "userId": 1,
+    "name": "Gaurav Lahamage",
+    "email": "gaurav@gmail.com",
+    "role": "USER"
+  },
+  "timestamp": "..."
+}
+```
+
+---
+
+## Step 3: Login User
+
+### Request
+
+```http
+POST http://localhost:8080/api/users/login
+```
+
+### Body
+
+```json
+{
+  "email": "gaurav@gmail.com",
+  "password": "gaurav123"
+}
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "data": {
+    "token": "jwt-token-here",
+    "tokenType": "Bearer",
+    "userId": 1,
+    "name": "Gaurav Lahamage",
+    "email": "gaurav@gmail.com",
+    "role": "USER"
+  },
+  "timestamp": "..."
+}
+```
+
+Token copy कर.
+
+---
+
+## Step 4: Test Protected Profile API
+
+### Request
+
+```http
+GET http://localhost:8080/api/users/profile
+```
+
+### Authorization
+
+Postman मध्ये:
+
+```text
+Authorization tab
+Type: Bearer Token
+Token: paste login token here
+```
+
+किंवा Headers मध्ये:
+
+```text
+Authorization: Bearer YOUR_TOKEN_HERE
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "Profile fetched successfully",
+  "data": {
+    "userId": 1,
+    "name": "Gaurav Lahamage",
+    "email": "gaurav@gmail.com",
+    "role": "USER",
+    "createdAt": "..."
+  },
+  "timestamp": "..."
+}
+```
+
+---
+
+# 15. Admin User Testing
+
+Public register API मधून default role `USER` ठेवले आहे. Admin testing साठी आधी user register कर आणि मग MySQL मध्ये role update कर.
+
+## Step 1: Register admin user normally
+
+```json
+{
+  "name": "Admin User",
+  "email": "admin@gmail.com",
+  "password": "admin123"
+}
+```
+
+## Step 2: MySQL मध्ये role update कर
+
+```sql
+USE smart_banking_db;
+
+UPDATE users
+SET role = 'ADMIN'
+WHERE email = 'admin@gmail.com';
+```
+
+## Step 3: Admin ला पुन्हा login कर
+
+```http
+POST http://localhost:8080/api/users/login
+```
+
+```json
+{
+  "email": "admin@gmail.com",
+  "password": "admin123"
+}
+```
+
+Response मध्ये:
+
+```json
+"role": "ADMIN"
+```
+
+---
+
+# 16. Files Created/Updated
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/util/ApiResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/exception/BadRequestException.java
+smart-banking-backend/src/main/java/com/smartbanking/exception/ResourceNotFoundException.java
+smart-banking-backend/src/main/java/com/smartbanking/exception/GlobalExceptionHandler.java
+
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/RegisterRequest.java
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/LoginRequest.java
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/AuthResponse.java
+smart-banking-backend/src/main/java/com/smartbanking/user/dto/UserProfileResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/security/JwtService.java
+smart-banking-backend/src/main/java/com/smartbanking/security/CustomUserDetailsService.java
+smart-banking-backend/src/main/java/com/smartbanking/security/JwtAuthenticationFilter.java
+
+smart-banking-backend/src/main/java/com/smartbanking/config/SecurityConfig.java
+
+smart-banking-backend/src/main/java/com/smartbanking/user/service/AuthService.java
+smart-banking-backend/src/main/java/com/smartbanking/user/service/impl/AuthServiceImpl.java
+smart-banking-backend/src/main/java/com/smartbanking/user/controller/UserController.java
+```
+
+---
+
+# 17. What Was Implemented
+
+```text
+✅ Register API implemented
+✅ Login API implemented
+✅ BCrypt password encryption added
+✅ JWT token generation added
+✅ JWT token validation added
+✅ JWT authentication filter added
+✅ SecurityConfig updated
+✅ Stateless authentication configured
+✅ UserDetailsService implemented
+✅ Role-based security prepared
+✅ GlobalExceptionHandler implemented
+✅ ApiResponse common response structure added
+✅ Validation added using @Valid
+✅ Protected profile API added for JWT testing
+```
+
+---
+
+# 18. APIs Created
+
+| Method | API                   | Access                  |
+| ------ | --------------------- | ----------------------- |
+| POST   | `/api/users/register` | Public                  |
+| POST   | `/api/users/login`    | Public                  |
+| GET    | `/api/users/profile`  | Protected, JWT required |
+
+---
+
+# 19. Common Errors and Fixes
+
+## Error 1: 403 Forbidden on register/login
+
+SecurityConfig मध्ये हे paths permitAll मध्ये आहेत का check कर:
+
+```java
+"/api/users/register",
+"/api/users/login"
+```
+
+---
+
+## Error 2: Invalid or expired JWT token
+
+Reason:
+
+```text
+Token wrong आहे
+Token expired झाला आहे
+Bearer word missing आहे
+```
+
+Fix:
+
+```text
+Authorization: Bearer your_token_here
+```
+
+---
+
+## Error 3: WeakKeyException
+
+Reason: JWT secret खूप short आहे.
+
+Fix: `application.properties` मध्ये long secret वापर:
+
+```properties
+app.jwt.secret=smartBankingSystemSecretKeyForJwtAuthenticationChangeThisLater123456789
+```
+
+---
+
+## Error 4: Email already registered
+
+Same email ने पुन्हा register करत आहेस.
+
+Fix:
+
+```sql
+DELETE FROM users WHERE email = 'gaurav@gmail.com';
+```
+
+किंवा दुसरा email वापर.
+
+---
+
+## Error 5: Password database मध्ये encrypted दिसतोय
+
+हे correct आहे ✅
+BCrypt password असा दिसेल:
+
+```text
+$2a$10$...
+```
+
+Plain password database मध्ये दिसायला नको.
+
+---
+
+## Error 6: Cannot resolve `Jwts.SIG.HS256`
+
+तुझ्या `pom.xml` मध्ये JJWT version check कर:
+
+```xml
+<jjwt.version>0.13.0</jjwt.version>
+```
+
+Dependencies असाव्यात:
+
+```xml
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-api</artifactId>
+    <version>${jjwt.version}</version>
+</dependency>
+
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-impl</artifactId>
+    <version>${jjwt.version}</version>
+    <scope>runtime</scope>
+</dependency>
+
+<dependency>
+    <groupId>io.jsonwebtoken</groupId>
+    <artifactId>jjwt-jackson</artifactId>
+    <version>${jjwt.version}</version>
+    <scope>runtime</scope>
+</dependency>
+```
+
+Then Eclipse मध्ये:
+
+```text
+Right click project
+Maven
+Update Project
+Force Update Snapshots/Releases check करा
+OK
+```
+
+---
+
+# 20. Git Commands to Push Phase 4
+
+Monorepo root folder मध्ये जा:
+
+```bash
+cd "C:\Users\gaura\OneDrive\Desktop\PROJECTS\Smart Banking System"
+```
+
+Status check:
+
+```bash
+git status
+```
+
+Add files:
+
+```bash
+git add .
+```
+
+Commit:
+
+```bash
+git commit -m "Phase 4: Implement JWT authentication and Spring Security"
+```
+
+Push:
+
+```bash
+git push origin main
+```
+
+---
+
+# 21. Updated PROGRESS SUMMARY for Phase 5
+
+```text
+PROGRESS SUMMARY:
+
+✅ Phase 1 Complete: Requirement analysis done
+✅ GitHub repository planned
+✅ Monorepo structure planned
+✅ Modules finalized
+
+✅ Phase 2 Complete: Spring Boot Backend Setup done
+- Spring Boot backend project created
+- Project name: smart-banking-backend
+- Package name: com.smartbanking
+- Java 17 configured
+- Maven pom.xml created with required dependencies
+- MySQL database configuration added
+- Basic package structure created
+- HealthController test API created
+- Swagger configured
+- Backend running successfully
+
+✅ Phase 3 Complete: Database Design, Entities, Enums, and Repositories done
+- User entity created
+- BankAccount entity created
+- Transaction entity created
+- Role enum created: USER, ADMIN
+- AccountType enum created: SAVINGS, CURRENT
+- AccountStatus enum created: ACTIVE, FROZEN, CLOSED
+- TransactionType enum created: DEPOSIT, WITHDRAW, TRANSFER
+- TransactionStatus enum created: SUCCESS, FAILED, PENDING
+- One User can have many BankAccounts relationship added
+- One BankAccount can have many Transactions relationship added
+- UserRepository created
+- BankAccountRepository created
+- TransactionRepository created
+
+✅ Phase 4 Complete: Authentication Module with JWT + Spring Security done
+- Register API implemented
+- Login API implemented
+- BCrypt password encryption added
+- JWT token generation added
+- JWT authentication filter added
+- CustomUserDetailsService implemented
+- SecurityConfig updated
+- Stateless JWT security configured
+- Role-based access prepared for USER and ADMIN
+- ApiResponse common response structure added
+- GlobalExceptionHandler added
+- Validation added
+- Protected profile API added
+- Postman testing steps completed
+
+PHASE 5: Bank Account Management Module
+
+Next implement account module:
+
+1. Logged-in user can create bank account
+2. User can view own accounts
+3. User can check account balance
+4. Account number should auto-generate
+5. Initial balance should be 0
+6. Account status should be ACTIVE by default
+7. User cannot access another user's account
+8. Create DTOs:
+   - AccountCreateRequest
+   - AccountResponse
+   - BalanceResponse
+9. APIs:
+   - POST /api/accounts
+   - GET /api/accounts/my
+   - GET /api/accounts/{accountId}/balance
+10. Use JWT logged-in user instead of passing userId manually
+11. Add validations and exceptions
+12. Postman testing with Bearer token
+13. Give Git commands to push Phase 5
+```
+
+Phase 4 complete ✅
+
+[1]: https://docs.spring.io/spring-security/reference/features/authentication/password-storage.html?utm_source=chatgpt.com "Password Storage :: Spring Security"
+[2]: https://github.com/jwtk/jjwt?utm_source=chatgpt.com "Java JWT: JSON Web Token for Java and Android"
+[3]: https://docs.spring.io/spring-security/reference/servlet/authentication/passwords/dao-authentication-provider.html?utm_source=chatgpt.com "DaoAuthenticationProvider :: Spring Security"
 
 
 

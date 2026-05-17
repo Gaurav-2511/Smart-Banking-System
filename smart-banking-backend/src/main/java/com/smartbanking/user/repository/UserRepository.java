@@ -1,4 +1,4 @@
-package com.smartbanking.transaction.repository;
+package com.smartbanking.user.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

@@ -28,6 +28,8 @@ public interface TransactionRepository extends JpaRepository<Transaction, Long> 
 
 	
 	// Account + date range filter.
-	List<Transaction> findByBankAccountIdAndCreatedAtBetweenOrderByCreatedAtDesc(Long bankAccountId,
-			LocalDateTime startDate, LocalDateTime endDate);
+	List<Transaction> findByBankAccountIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+			Long bankAccountId,
+			LocalDateTime startDate,
+			LocalDateTime endDate);
 }
