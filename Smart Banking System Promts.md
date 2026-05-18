@@ -8914,6 +8914,1224 @@ At the end give updated PROGRESS SUMMARY for Phase 7.
 
 
 
+Gaurav, चला **Phase 6: Banking Transaction Module** सुरू करूया ✅
+Uploaded Phase 6 prompt नुसार या phase मध्ये आपण **Deposit, Withdraw, Fund Transfer, @Transactional, validations, transaction records आणि Postman testing** implement करणार आहोत. 
+
+# PHASE 6: Banking Transaction Module
+
+## APIs in this phase
+
+```text
+POST /api/transactions/deposit
+POST /api/transactions/withdraw
+POST /api/transactions/transfer
+```
+
+या तीनही APIs ला **JWT Bearer Token required** आहे.
+
+---
+
+# 1. Create DTOs
+
+## 1.1 DepositRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/DepositRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.transaction.dto;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.math.BigDecimal;
+
+@Data
+public class DepositRequest {
+
+    @NotNull(message = "Account id is required")
+    private Long accountId;
+
+    @NotNull(message = "Amount is required")
+    @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
+    @Digits(integer = 17, fraction = 2, message = "Amount must have maximum 2 decimal places")
+    private BigDecimal amount;
+
+    @Size(max = 255, message = "Description must not exceed 255 characters")
+    private String description;
+}
+```
+
+---
+
+## 1.2 WithdrawRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/WithdrawRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.transaction.dto;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.math.BigDecimal;
+
+@Data
+public class WithdrawRequest {
+
+    @NotNull(message = "Account id is required")
+    private Long accountId;
+
+    @NotNull(message = "Amount is required")
+    @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
+    @Digits(integer = 17, fraction = 2, message = "Amount must have maximum 2 decimal places")
+    private BigDecimal amount;
+
+    @Size(max = 255, message = "Description must not exceed 255 characters")
+    private String description;
+}
+```
+
+---
+
+## 1.3 TransferRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/TransferRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.transaction.dto;
+
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Digits;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+import lombok.Data;
+
+import java.math.BigDecimal;
+
+@Data
+public class TransferRequest {
+
+    @NotNull(message = "From account id is required")
+    private Long fromAccountId;
+
+    @NotBlank(message = "To account number is required")
+    private String toAccountNumber;
+
+    @NotNull(message = "Amount is required")
+    @DecimalMin(value = "0.01", message = "Amount must be greater than 0")
+    @Digits(integer = 17, fraction = 2, message = "Amount must have maximum 2 decimal places")
+    private BigDecimal amount;
+
+    @Size(max = 255, message = "Description must not exceed 255 characters")
+    private String description;
+}
+```
+
+---
+
+## 1.4 TransactionResponse
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/TransactionResponse.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.transaction.dto;
+
+import com.smartbanking.transaction.entity.TransactionStatus;
+import com.smartbanking.transaction.entity.TransactionType;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class TransactionResponse {
+
+    private Long transactionId;
+    private String referenceNumber;
+
+    private Long accountId;
+    private String accountNumber;
+
+    private TransactionType transactionType;
+    private TransactionStatus status;
+
+    private BigDecimal amount;
+    private BigDecimal currentBalance;
+
+    private String fromAccountNumber;
+    private String toAccountNumber;
+
+    private String description;
+    private LocalDateTime createdAt;
+}
+```
+
+---
+
+# 2. Create TransactionService Interface
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/TransactionService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.service;
+
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+
+public interface TransactionService {
+
+    TransactionResponse deposit(DepositRequest request, String userEmail);
+
+    TransactionResponse withdraw(WithdrawRequest request, String userEmail);
+
+    TransactionResponse transfer(TransferRequest request, String userEmail);
+}
+```
+
+---
+
+# 3. Create TransactionServiceImpl
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/impl/TransactionServiceImpl.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.service.impl;
+
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.BankAccount;
+import com.smartbanking.account.repository.BankAccountRepository;
+import com.smartbanking.exception.BadRequestException;
+import com.smartbanking.exception.ResourceNotFoundException;
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+import com.smartbanking.transaction.entity.Transaction;
+import com.smartbanking.transaction.entity.TransactionStatus;
+import com.smartbanking.transaction.entity.TransactionType;
+import com.smartbanking.transaction.repository.TransactionRepository;
+import com.smartbanking.transaction.service.TransactionService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class TransactionServiceImpl implements TransactionService {
+
+    private final BankAccountRepository bankAccountRepository;
+    private final TransactionRepository transactionRepository;
+
+    /*
+     * Deposit मध्ये balance update + transaction save दोन्ही कामे आहेत.
+     * म्हणून @Transactional ठेवले आहे.
+     */
+    @Override
+    @Transactional
+    public TransactionResponse deposit(DepositRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        validateAccountActive(account);
+
+        BigDecimal newBalance = account.getBalance().add(request.getAmount());
+        account.setBalance(newBalance);
+
+        BankAccount savedAccount = bankAccountRepository.save(account);
+
+        Transaction transaction = createTransaction(
+                savedAccount,
+                TransactionType.DEPOSIT,
+                request.getAmount(),
+                savedAccount.getAccountNumber(),
+                savedAccount.getAccountNumber(),
+                getDescriptionOrDefault(request.getDescription(), "Money deposited successfully")
+        );
+
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+    }
+
+    /*
+     * Withdraw मध्ये balance कमी करतो आणि transaction record save करतो.
+     */
+    @Override
+    @Transactional
+    public TransactionResponse withdraw(WithdrawRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        validateAccountActive(account);
+        validateSufficientBalance(account, request.getAmount());
+
+        BigDecimal newBalance = account.getBalance().subtract(request.getAmount());
+        account.setBalance(newBalance);
+
+        BankAccount savedAccount = bankAccountRepository.save(account);
+
+        Transaction transaction = createTransaction(
+                savedAccount,
+                TransactionType.WITHDRAW,
+                request.getAmount(),
+                savedAccount.getAccountNumber(),
+                savedAccount.getAccountNumber(),
+                getDescriptionOrDefault(request.getDescription(), "Money withdrawn successfully")
+        );
+
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+    }
+
+    /*
+     * Fund transfer सर्वात important operation आहे.
+     * Sender कडून पैसे cut होतात आणि receiver कडे add होतात.
+     * मध्ये error आली तर complete rollback होण्यासाठी @Transactional वापरले आहे.
+     */
+    @Override
+    @Transactional
+    public TransactionResponse transfer(TransferRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount senderAccount = bankAccountRepository.findByIdAndUserEmail(
+                        request.getFromAccountId(),
+                        userEmail
+                )
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sender account not found or you do not have access to this account"
+                ));
+
+        BankAccount receiverAccount = bankAccountRepository.findByAccountNumber(request.getToAccountNumber())
+                .orElseThrow(() -> new ResourceNotFoundException("Receiver account not found"));
+
+        if (senderAccount.getAccountNumber().equals(receiverAccount.getAccountNumber())) {
+            throw new BadRequestException("Sender and receiver account cannot be same");
+        }
+
+        validateAccountActive(senderAccount);
+        validateAccountActive(receiverAccount);
+        validateSufficientBalance(senderAccount, request.getAmount());
+
+        senderAccount.setBalance(senderAccount.getBalance().subtract(request.getAmount()));
+        receiverAccount.setBalance(receiverAccount.getBalance().add(request.getAmount()));
+
+        BankAccount savedSenderAccount = bankAccountRepository.save(senderAccount);
+        BankAccount savedReceiverAccount = bankAccountRepository.save(receiverAccount);
+
+        /*
+         * Sender side transaction record.
+         */
+        Transaction senderTransaction = createTransaction(
+                savedSenderAccount,
+                TransactionType.TRANSFER,
+                request.getAmount(),
+                savedSenderAccount.getAccountNumber(),
+                savedReceiverAccount.getAccountNumber(),
+                getDescriptionOrDefault(
+                        request.getDescription(),
+                        "Money transferred to account " + savedReceiverAccount.getAccountNumber()
+                )
+        );
+
+        Transaction savedSenderTransaction = transactionRepository.save(senderTransaction);
+
+        /*
+         * Receiver side transaction record.
+         * Receiver ला पण history मध्ये credit entry दिसावी म्हणून हा record save करतो.
+         */
+        Transaction receiverTransaction = createTransaction(
+                savedReceiverAccount,
+                TransactionType.TRANSFER,
+                request.getAmount(),
+                savedSenderAccount.getAccountNumber(),
+                savedReceiverAccount.getAccountNumber(),
+                "Money received from account " + savedSenderAccount.getAccountNumber()
+        );
+
+        transactionRepository.save(receiverTransaction);
+
+        return mapToTransactionResponse(savedSenderTransaction, savedSenderAccount.getBalance());
+    }
+
+    private void validateAmount(BigDecimal amount) {
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Amount must be greater than 0");
+        }
+    }
+
+    private void validateAccountActive(BankAccount account) {
+
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new BadRequestException("Account is not active");
+        }
+    }
+
+    private void validateSufficientBalance(BankAccount account, BigDecimal amount) {
+
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new BadRequestException("Insufficient balance");
+        }
+    }
+
+    private Transaction createTransaction(
+            BankAccount account,
+            TransactionType transactionType,
+            BigDecimal amount,
+            String fromAccountNumber,
+            String toAccountNumber,
+            String description
+    ) {
+
+        return Transaction.builder()
+                .referenceNumber(generateUniqueReferenceNumber())
+                .transactionType(transactionType)
+                .status(TransactionStatus.SUCCESS)
+                .amount(amount)
+                .fromAccountNumber(fromAccountNumber)
+                .toAccountNumber(toAccountNumber)
+                .description(description)
+                .bankAccount(account)
+                .build();
+    }
+
+    private String generateUniqueReferenceNumber() {
+
+        String referenceNumber;
+
+        do {
+            String dateTimePart = LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+            String randomPart = UUID.randomUUID()
+                    .toString()
+                    .replace("-", "")
+                    .substring(0, 8)
+                    .toUpperCase();
+
+            referenceNumber = "TXN" + dateTimePart + randomPart;
+
+        } while (transactionRepository.existsByReferenceNumber(referenceNumber));
+
+        return referenceNumber;
+    }
+
+    private String getDescriptionOrDefault(String description, String defaultDescription) {
+
+        if (description == null || description.trim().isEmpty()) {
+            return defaultDescription;
+        }
+
+        return description.trim();
+    }
+
+    private TransactionResponse mapToTransactionResponse(Transaction transaction, BigDecimal currentBalance) {
+
+        BankAccount account = transaction.getBankAccount();
+
+        return TransactionResponse.builder()
+                .transactionId(transaction.getId())
+                .referenceNumber(transaction.getReferenceNumber())
+                .accountId(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .transactionType(transaction.getTransactionType())
+                .status(transaction.getStatus())
+                .amount(transaction.getAmount())
+                .currentBalance(currentBalance)
+                .fromAccountNumber(transaction.getFromAccountNumber())
+                .toAccountNumber(transaction.getToAccountNumber())
+                .description(transaction.getDescription())
+                .createdAt(transaction.getCreatedAt())
+                .build();
+    }
+}
+```
+
+---
+
+# 4. Create TransactionController
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/controller/TransactionController.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.controller;
+
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+import com.smartbanking.transaction.service.TransactionService;
+import com.smartbanking.util.ApiResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/transactions")
+@RequiredArgsConstructor
+public class TransactionController {
+
+    private final TransactionService transactionService;
+
+    @PostMapping("/deposit")
+    public ResponseEntity<ApiResponse<TransactionResponse>> deposit(
+            @Valid @RequestBody DepositRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.deposit(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount deposited successfully", response));
+    }
+
+    @PostMapping("/withdraw")
+    public ResponseEntity<ApiResponse<TransactionResponse>> withdraw(
+            @Valid @RequestBody WithdrawRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.withdraw(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount withdrawn successfully", response));
+    }
+
+    @PostMapping("/transfer")
+    public ResponseEntity<ApiResponse<TransactionResponse>> transfer(
+            @Valid @RequestBody TransferRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.transfer(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount transferred successfully", response));
+    }
+}
+```
+
+---
+
+# 5. SecurityConfig Check
+
+Phase 4 मध्ये already हे आहे:
+
+```java
+.anyRequest().authenticated()
+```
+
+म्हणून `/api/transactions/**` APIs automatically protected आहेत.
+
+पण तुला explicit rule ठेवायचा असेल तर `SecurityConfig.java` मध्ये admin rule च्या खाली हे add करू शकतो:
+
+```java
+.requestMatchers("/api/transactions/**").hasAnyRole("USER", "ADMIN")
+```
+
+Final flow असा दिसेल:
+
+```java
+.requestMatchers("/api/admin/**").hasRole("ADMIN")
+.requestMatchers("/api/accounts/**").hasAnyRole("USER", "ADMIN")
+.requestMatchers("/api/transactions/**").hasAnyRole("USER", "ADMIN")
+.anyRequest().authenticated()
+```
+
+---
+
+# 6. @Transactional Simple Explanation
+
+`@Transactional` म्हणजे complete operation एकाच database transaction मध्ये run होते.
+
+## Transfer Example
+
+```text
+Sender account मधून 500 cut झाले
+Receiver account मध्ये 500 add झाले
+Transaction record save झाला
+```
+
+जर मध्ये error आली, उदा. receiver account save होताना problem आला, तर:
+
+```text
+Sender चे पैसे cut होणार नाहीत
+Receiver ला पैसे add होणार नाहीत
+Transaction record save होणार नाही
+```
+
+म्हणजे पूर्ण operation rollback होईल.
+
+Simple Marathi/Hinglish:
+
+`@Transactional` म्हणजे “सगळं काम successful झालं तरच database मध्ये save कर; नाहीतर सगळं cancel कर.”
+
+Banking project मध्ये हे खूप important आहे.
+
+---
+
+# 7. Postman Testing
+
+## Step 1: Backend Run करा
+
+```bash
+cd smart-banking-backend
+mvn spring-boot:run
+```
+
+किंवा Eclipse मध्ये:
+
+```text
+SmartBankingBackendApplication.java
+Right click
+Run As -> Spring Boot App
+```
+
+---
+
+## Step 2: Login करून Token घ्या
+
+```http
+POST http://localhost:8080/api/users/login
+```
+
+Body:
+
+```json
+{
+  "email": "gaurav@gmail.com",
+  "password": "gaurav123"
+}
+```
+
+Response मधून token copy कर.
+
+Postman मध्ये पुढच्या APIs साठी:
+
+```text
+Authorization tab
+Type: Bearer Token
+Token: paste token here
+```
+
+---
+
+## Step 3: My Accounts Check करा
+
+```http
+GET http://localhost:8080/api/accounts/my
+```
+
+इथून `accountId` आणि `accountNumber` copy कर.
+
+---
+
+## Step 4: Deposit Money
+
+```http
+POST http://localhost:8080/api/transactions/deposit
+```
+
+Headers:
+
+```text
+Content-Type: application/json
+Authorization: Bearer YOUR_TOKEN
+```
+
+Body:
+
+```json
+{
+  "accountId": 1,
+  "amount": 5000,
+  "description": "Initial deposit"
+}
+```
+
+Expected Response:
+
+```json
+{
+  "success": true,
+  "message": "Amount deposited successfully",
+  "data": {
+    "transactionId": 1,
+    "referenceNumber": "TXN20260518153000A1B2C3D4",
+    "accountId": 1,
+    "accountNumber": "SB1234567890",
+    "transactionType": "DEPOSIT",
+    "status": "SUCCESS",
+    "amount": 5000,
+    "currentBalance": 5000,
+    "fromAccountNumber": "SB1234567890",
+    "toAccountNumber": "SB1234567890",
+    "description": "Initial deposit",
+    "createdAt": "2026-05-18T15:30:00"
+  },
+  "timestamp": "2026-05-18T15:30:00"
+}
+```
+
+---
+
+## Step 5: Withdraw Money
+
+```http
+POST http://localhost:8080/api/transactions/withdraw
+```
+
+Body:
+
+```json
+{
+  "accountId": 1,
+  "amount": 1000,
+  "description": "ATM withdrawal"
+}
+```
+
+Expected:
+
+```json
+{
+  "success": true,
+  "message": "Amount withdrawn successfully",
+  "data": {
+    "transactionType": "WITHDRAW",
+    "status": "SUCCESS",
+    "amount": 1000,
+    "currentBalance": 4000
+  },
+  "timestamp": "..."
+}
+```
+
+---
+
+## Step 6: Transfer Money
+
+Transfer test करण्यासाठी receiver account number पाहिजे.
+
+### Receiver account create करा
+
+दुसऱ्या user ने login करून account create करा किंवा same user चे दुसरे account वापर.
+
+Receiver account number example:
+
+```text
+SB9876543210
+```
+
+### Request
+
+```http
+POST http://localhost:8080/api/transactions/transfer
+```
+
+Body:
+
+```json
+{
+  "fromAccountId": 1,
+  "toAccountNumber": "SB9876543210",
+  "amount": 500,
+  "description": "Money transfer test"
+}
+```
+
+Expected:
+
+```json
+{
+  "success": true,
+  "message": "Amount transferred successfully",
+  "data": {
+    "transactionType": "TRANSFER",
+    "status": "SUCCESS",
+    "amount": 500,
+    "currentBalance": 3500,
+    "fromAccountNumber": "SB1234567890",
+    "toAccountNumber": "SB9876543210",
+    "description": "Money transfer test"
+  },
+  "timestamp": "..."
+}
+```
+
+---
+
+# 8. MySQL Testing
+
+## Check accounts balance
+
+```sql
+USE smart_banking_db;
+
+SELECT id, account_number, balance, status, user_id
+FROM bank_accounts;
+```
+
+## Check transactions
+
+```sql
+SELECT 
+    id,
+    reference_number,
+    transaction_type,
+    status,
+    amount,
+    from_account_number,
+    to_account_number,
+    description,
+    bank_account_id,
+    created_at
+FROM transactions
+ORDER BY id DESC;
+```
+
+Transfer नंतर तुला **2 records** दिसतील:
+
+```text
+1 record sender account साठी
+1 record receiver account साठी
+```
+
+हे intentionally केले आहे, कारण receiver ला पण transaction history मध्ये entry दिसली पाहिजे.
+
+---
+
+# 9. Common Errors and Fixes
+
+## Error 1: 403 Forbidden
+
+Reason:
+
+```text
+Token missing आहे
+Token expired आहे
+Bearer token चुकीचा आहे
+```
+
+Fix:
+
+```text
+Login करा
+Fresh token copy करा
+Authorization tab मध्ये Bearer Token म्हणून paste करा
+```
+
+---
+
+## Error 2: Amount must be greater than 0
+
+Wrong body:
+
+```json
+{
+  "accountId": 1,
+  "amount": 0
+}
+```
+
+Correct:
+
+```json
+{
+  "accountId": 1,
+  "amount": 100
+}
+```
+
+---
+
+## Error 3: Account not found or you do not have access
+
+Reason:
+
+```text
+accountId wrong आहे
+किंवा account दुसऱ्या user चा आहे
+```
+
+Fix:
+
+```http
+GET http://localhost:8080/api/accounts/my
+```
+
+इथून correct accountId घ्या.
+
+---
+
+## Error 4: Account is not active
+
+Reason:
+
+```text
+Account FROZEN किंवा CLOSED आहे
+```
+
+Fix:
+
+```text
+Only ACTIVE accounts वर deposit/withdraw/transfer allowed आहे.
+```
+
+Admin phase मध्ये account activate/freeze manage करू.
+
+---
+
+## Error 5: Insufficient balance
+
+Reason:
+
+```text
+Withdraw/Transfer amount balance पेक्षा जास्त आहे
+```
+
+Example:
+
+```text
+Balance = 1000
+Withdraw = 5000
+```
+
+Fix:
+
+```text
+Deposit करा किंवा कमी amount withdraw/transfer करा.
+```
+
+---
+
+## Error 6: Receiver account not found
+
+Reason:
+
+```text
+toAccountNumber चुकीचा आहे
+```
+
+Fix:
+
+```sql
+SELECT account_number FROM bank_accounts;
+```
+
+Correct receiver account number वापर.
+
+---
+
+## Error 7: Sender and receiver account cannot be same
+
+Reason:
+
+```text
+Same account मधून same account ला transfer करत आहेस
+```
+
+Fix:
+
+```text
+Different receiver account number वापर.
+```
+
+---
+
+# 10. Files Created/Updated
+
+```text
+Created:
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/DepositRequest.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/WithdrawRequest.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/TransferRequest.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/TransactionResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/TransactionService.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/impl/TransactionServiceImpl.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/controller/TransactionController.java
+```
+
+Optional update:
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/config/SecurityConfig.java
+```
+
+---
+
+# 11. What Was Implemented
+
+```text
+✅ Deposit money implemented
+✅ Withdraw money implemented
+✅ Fund transfer implemented
+✅ @Transactional added for money operations
+✅ Amount validation added
+✅ Account ACTIVE status validation added
+✅ Ownership check added using JWT user email
+✅ User can withdraw only from own account
+✅ Sender sufficient balance validation added
+✅ Receiver account existence validation added
+✅ Transaction records save केले
+✅ Transfer मध्ये sender + receiver दोन्ही records save केले
+✅ DTO pattern followed
+✅ Service interface + ServiceImpl pattern followed
+✅ Controller APIs created
+```
+
+---
+
+# 12. APIs Created
+
+| Method | API                          | Access              | Purpose        |
+| ------ | ---------------------------- | ------------------- | -------------- |
+| POST   | `/api/transactions/deposit`  | USER/ADMIN with JWT | Deposit money  |
+| POST   | `/api/transactions/withdraw` | USER/ADMIN with JWT | Withdraw money |
+| POST   | `/api/transactions/transfer` | USER/ADMIN with JWT | Transfer money |
+
+---
+
+# 13. Git Commands to Push Phase 6
+
+Monorepo root folder मध्ये जा:
+
+```bash
+cd "C:\Users\gaura\OneDrive\Desktop\PROJECTS\Smart Banking System"
+```
+
+Status check:
+
+```bash
+git status
+```
+
+Files add:
+
+```bash
+git add .
+```
+
+Commit:
+
+```bash
+git commit -m "Phase 6: Implement banking transaction module"
+```
+
+Push:
+
+```bash
+git push origin main
+```
+
+---
+
+# 14. Updated PROGRESS SUMMARY for Phase 7
+
+```text
+PROGRESS SUMMARY:
+
+✅ Phase 1 Complete: Requirement analysis done
+✅ GitHub repository planned
+✅ Monorepo structure planned
+✅ Modules finalized
+
+✅ Phase 2 Complete: Spring Boot Backend Setup done
+- Spring Boot backend project created
+- Project name: smart-banking-backend
+- Package name: com.smartbanking
+- Java 17 configured
+- Maven pom.xml created with required dependencies
+- MySQL database configuration added
+- Basic package structure created
+- HealthController test API created
+- Swagger configured
+- Backend running successfully
+
+✅ Phase 3 Complete: Database Design, Entities, Enums, and Repositories done
+- User entity created
+- BankAccount entity created
+- Transaction entity created
+- Role enum created: USER, ADMIN
+- AccountType enum created: SAVINGS, CURRENT
+- AccountStatus enum created: ACTIVE, FROZEN, CLOSED
+- TransactionType enum created: DEPOSIT, WITHDRAW, TRANSFER
+- TransactionStatus enum created: SUCCESS, FAILED, PENDING
+- One User can have many BankAccounts relationship added
+- One BankAccount can have many Transactions relationship added
+- UserRepository created
+- BankAccountRepository created
+- TransactionRepository created
+
+✅ Phase 4 Complete: Authentication Module with JWT + Spring Security done
+- Register API implemented
+- Login API implemented
+- BCrypt password encryption added
+- JWT token generation added
+- JWT authentication filter added
+- CustomUserDetailsService implemented
+- SecurityConfig updated
+- Stateless JWT security configured
+- Role-based access prepared for USER and ADMIN
+- ApiResponse common response structure added
+- GlobalExceptionHandler added
+- Validation added
+- Protected profile API added
+- Postman testing steps completed
+
+✅ Phase 5 Complete: Bank Account Management Module done
+- AccountCreateRequest DTO created
+- AccountResponse DTO created
+- BalanceResponse DTO created
+- AccountService interface created
+- AccountServiceImpl created
+- AccountController created
+- Logged-in user can create bank account
+- User can view own accounts
+- User can check account balance
+- Account number auto-generation added
+- Initial balance set to 0
+- Account status set to ACTIVE
+- Ownership check added
+- User cannot access another user's account
+- Postman testing steps completed
+
+✅ Phase 6 Complete: Banking Transaction Module done
+- DepositRequest DTO created
+- WithdrawRequest DTO created
+- TransferRequest DTO created
+- TransactionResponse DTO created
+- TransactionService interface created
+- TransactionServiceImpl created
+- TransactionController created
+- Deposit money API implemented
+- Withdraw money API implemented
+- Fund transfer API implemented
+- @Transactional added for money operations
+- Amount validation added
+- Account ACTIVE validation added
+- Ownership check added using JWT logged-in user
+- Sufficient balance validation added
+- Receiver account validation added
+- Transaction records saved
+- Transfer creates sender and receiver transaction entries
+- Postman testing steps completed
+
+PHASE 7: Transaction History + Mini Statement
+
+Next implement transaction history features:
+
+1. User can view own transactions
+2. User can view transactions by account
+3. Filter transactions by:
+   - Date range
+   - Transaction type
+4. Add pagination
+5. Mini statement API
+6. APIs:
+   - GET /api/transactions/my
+   - GET /api/transactions/account/{accountId}
+   - GET /api/transactions/account/{accountId}/mini-statement
+7. User cannot view other user's transactions
+8. Proper DTO response
+9. Postman testing
+10. Give Git commands to push Phase 7
+```
+
+Phase 6 complete ✅
 
 
 
