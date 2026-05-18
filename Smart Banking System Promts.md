@@ -7704,6 +7704,1092 @@ At the end give updated PROGRESS SUMMARY for Phase 6.
 
 ### Ans=========>
 
+Gaurav, चला **Phase 5: Bank Account Management Module** सुरू करूया ✅
+मी तुझ्या uploaded Smart Banking System prompt नुसार Phase 5 implement करत आहे. 
+
+Older uploaded files पैकी काही expired झालेले दिसत आहेत, पण आत्ताचा **Smart Banking System Promts.md** file load झाला आहे, so Phase 5 साठी आपण continue करू शकतो.
+
+---
+
+# PHASE 5: Bank Account Management Module
+
+या phase मध्ये आपण logged-in user साठी **bank account create, own accounts view, balance check** APIs बनवणार आहोत.
+
+Important rule:
+
+```text
+UserId manually pass करायचा नाही.
+JWT token मधून logged-in user email घेऊन user find करायचा.
+```
+
+---
+
+# APIs in Phase 5
+
+```text
+POST /api/accounts
+GET  /api/accounts/my
+GET  /api/accounts/{accountId}/balance
+```
+
+---
+
+# 1. Create Account DTOs
+
+---
+
+## 1.1 AccountCreateRequest
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/AccountCreateRequest.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.account.dto;
+
+import com.smartbanking.account.entity.AccountType;
+import jakarta.validation.constraints.NotNull;
+import lombok.Data;
+
+@Data
+public class AccountCreateRequest {
+
+    @NotNull(message = "Account type is required")
+    private AccountType accountType;
+}
+```
+
+### Simple explanation
+
+User account create करताना फक्त account type पाठवेल:
+
+```json
+{
+  "accountType": "SAVINGS"
+}
+```
+
+Account number, balance, status backend automatic set करेल.
+
+---
+
+## 1.2 AccountResponse
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/AccountResponse.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.account.dto;
+
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.AccountType;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class AccountResponse {
+
+    private Long accountId;
+    private String accountNumber;
+    private AccountType accountType;
+    private BigDecimal balance;
+    private AccountStatus status;
+    private LocalDateTime createdAt;
+}
+```
+
+---
+
+## 1.3 BalanceResponse
+
+### File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/BalanceResponse.java
+```
+
+### Complete Code
+
+```java
+package com.smartbanking.account.dto;
+
+import com.smartbanking.account.entity.AccountStatus;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class BalanceResponse {
+
+    private Long accountId;
+    private String accountNumber;
+    private BigDecimal balance;
+    private AccountStatus status;
+}
+```
+
+---
+
+# 2. Update BankAccountRepository
+
+तुझ्या existing repository मध्ये काही methods add कर.
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/repository/BankAccountRepository.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.account.repository;
+
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.BankAccount;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface BankAccountRepository extends JpaRepository<BankAccount, Long> {
+
+    /*
+     * Account number varun account find karaycha.
+     */
+    Optional<BankAccount> findByAccountNumber(String accountNumber);
+
+    /*
+     * Account number duplicate aahe ka check karaycha.
+     */
+    boolean existsByAccountNumber(String accountNumber);
+
+    /*
+     * Logged-in user che all accounts fetch karayche.
+     */
+    List<BankAccount> findByUserId(Long userId);
+
+    /*
+     * Logged-in user email varun accounts fetch karayche.
+     * JWT मधून email मिळतो, म्हणून useful आहे.
+     */
+    List<BankAccount> findByUserEmail(String email);
+
+    /*
+     * Specific account हा logged-in user चाच आहे का check karaycha.
+     */
+    Optional<BankAccount> findByIdAndUserEmail(Long accountId, String email);
+
+    /*
+     * Admin dashboard madhe status wise accounts count/fetch karayla useful.
+     */
+    List<BankAccount> findByStatus(AccountStatus status);
+
+    long countByStatus(AccountStatus status);
+}
+```
+
+---
+
+# 3. Create AccountService Interface
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/service/AccountService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.account.service;
+
+import com.smartbanking.account.dto.AccountCreateRequest;
+import com.smartbanking.account.dto.AccountResponse;
+import com.smartbanking.account.dto.BalanceResponse;
+
+import java.util.List;
+
+public interface AccountService {
+
+    AccountResponse createAccount(AccountCreateRequest request, String userEmail);
+
+    List<AccountResponse> getMyAccounts(String userEmail);
+
+    BalanceResponse getAccountBalance(Long accountId, String userEmail);
+}
+```
+
+---
+
+# 4. Create AccountServiceImpl
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/service/impl/AccountServiceImpl.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.account.service.impl;
+
+import com.smartbanking.account.dto.AccountCreateRequest;
+import com.smartbanking.account.dto.AccountResponse;
+import com.smartbanking.account.dto.BalanceResponse;
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.BankAccount;
+import com.smartbanking.account.repository.BankAccountRepository;
+import com.smartbanking.account.service.AccountService;
+import com.smartbanking.exception.ResourceNotFoundException;
+import com.smartbanking.user.entity.User;
+import com.smartbanking.user.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
+import java.math.BigDecimal;
+import java.security.SecureRandom;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class AccountServiceImpl implements AccountService {
+
+    private final BankAccountRepository bankAccountRepository;
+    private final UserRepository userRepository;
+
+    private static final SecureRandom secureRandom = new SecureRandom();
+
+    @Override
+    public AccountResponse createAccount(AccountCreateRequest request, String userEmail) {
+
+        /*
+         * JWT token madhun email milto.
+         * त्या email वरून logged-in user database मधून fetch करतो.
+         */
+        User user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        BankAccount bankAccount = BankAccount.builder()
+                .accountNumber(generateUniqueAccountNumber())
+                .accountType(request.getAccountType())
+                .balance(BigDecimal.ZERO)
+                .status(AccountStatus.ACTIVE)
+                .user(user)
+                .build();
+
+        BankAccount savedAccount = bankAccountRepository.save(bankAccount);
+
+        return mapToAccountResponse(savedAccount);
+    }
+
+    @Override
+    public List<AccountResponse> getMyAccounts(String userEmail) {
+
+        List<BankAccount> accounts = bankAccountRepository.findByUserEmail(userEmail);
+
+        return accounts.stream()
+                .map(this::mapToAccountResponse)
+                .toList();
+    }
+
+    @Override
+    public BalanceResponse getAccountBalance(Long accountId, String userEmail) {
+
+        /*
+         * findByIdAndUserEmail वापरल्यामुळे user दुसऱ्याचा account access करू शकत नाही.
+         */
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(accountId, userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException("Account not found or you do not have access to this account"));
+
+        return BalanceResponse.builder()
+                .accountId(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .balance(account.getBalance())
+                .status(account.getStatus())
+                .build();
+    }
+
+    private AccountResponse mapToAccountResponse(BankAccount account) {
+
+        return AccountResponse.builder()
+                .accountId(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .accountType(account.getAccountType())
+                .balance(account.getBalance())
+                .status(account.getStatus())
+                .createdAt(account.getCreatedAt())
+                .build();
+    }
+
+    private String generateUniqueAccountNumber() {
+
+        String accountNumber;
+
+        do {
+            /*
+             * Account number format:
+             * SB + 10 digit random number
+             * Example: SB8392017456
+             */
+            long randomNumber = 1000000000L + secureRandom.nextInt(900000000);
+            accountNumber = "SB" + randomNumber;
+
+        } while (bankAccountRepository.existsByAccountNumber(accountNumber));
+
+        return accountNumber;
+    }
+}
+```
+
+---
+
+# 5. Create AccountController
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/account/controller/AccountController.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.account.controller;
+
+import com.smartbanking.account.dto.AccountCreateRequest;
+import com.smartbanking.account.dto.AccountResponse;
+import com.smartbanking.account.dto.BalanceResponse;
+import com.smartbanking.account.service.AccountService;
+import com.smartbanking.util.ApiResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/accounts")
+@RequiredArgsConstructor
+public class AccountController {
+
+    private final AccountService accountService;
+
+    /*
+     * Create bank account for logged-in user.
+     */
+    @PostMapping
+    public ResponseEntity<ApiResponse<AccountResponse>> createAccount(
+            @Valid @RequestBody AccountCreateRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        AccountResponse response = accountService.createAccount(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Bank account created successfully", response));
+    }
+
+    /*
+     * Get all accounts of logged-in user.
+     */
+    @GetMapping("/my")
+    public ResponseEntity<ApiResponse<List<AccountResponse>>> getMyAccounts(
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        List<AccountResponse> response = accountService.getMyAccounts(userEmail);
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Accounts fetched successfully", response));
+    }
+
+    /*
+     * Get balance of logged-in user's specific account.
+     */
+    @GetMapping("/{accountId}/balance")
+    public ResponseEntity<ApiResponse<BalanceResponse>> getAccountBalance(
+            @PathVariable Long accountId,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        BalanceResponse response = accountService.getAccountBalance(accountId, userEmail);
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Account balance fetched successfully", response));
+    }
+}
+```
+
+---
+
+# 6. SecurityConfig Check
+
+Phase 4 मध्ये आपली SecurityConfig अशी आहे:
+
+```java
+.anyRequest().authenticated()
+```
+
+म्हणून `/api/accounts/**` automatically protected आहे.
+
+तुला separate rule add करायची असेल तर करू शकतो.
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/config/SecurityConfig.java
+```
+
+या part मध्ये `/api/accounts/**` add करू शकतो:
+
+```java
+.requestMatchers("/api/admin/**").hasRole("ADMIN")
+.requestMatchers("/api/accounts/**").hasAnyRole("USER", "ADMIN")
+.anyRequest().authenticated()
+```
+
+But required नाही, कारण already authenticated आहे.
+
+---
+
+# 7. Account Number Logic Explanation
+
+Account number backend generate करतो:
+
+```text
+SB + 10 digit random number
+```
+
+Example:
+
+```text
+SB8392017456
+```
+
+Flow:
+
+```text
+Random account number generate
+        ↓
+Database मध्ये duplicate आहे का check
+        ↓
+Duplicate असेल तर पुन्हा generate
+        ↓
+Unique असेल तर save
+```
+
+Simple Marathi/Hinglish:
+
+Account number user कडून घेणार नाही, कारण user duplicate किंवा fake number देऊ शकतो.
+Backend generate करणे industry-level safe approach आहे.
+
+---
+
+# 8. Postman Testing
+
+## Step 1: Backend Run करा
+
+```bash
+cd smart-banking-backend
+mvn spring-boot:run
+```
+
+किंवा Eclipse मध्ये:
+
+```text
+SmartBankingBackendApplication.java
+Right click
+Run As -> Spring Boot App
+```
+
+---
+
+## Step 2: Login करून JWT Token घ्या
+
+### Request
+
+```http
+POST http://localhost:8080/api/users/login
+```
+
+### Body
+
+```json
+{
+  "email": "gaurav@gmail.com",
+  "password": "gaurav123"
+}
+```
+
+Response मधून token copy कर.
+
+---
+
+## Step 3: Create Bank Account
+
+### Request
+
+```http
+POST http://localhost:8080/api/accounts
+```
+
+### Authorization
+
+```text
+Type: Bearer Token
+Token: paste login token here
+```
+
+### Headers
+
+```text
+Content-Type: application/json
+```
+
+### Body
+
+```json
+{
+  "accountType": "SAVINGS"
+}
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "Bank account created successfully",
+  "data": {
+    "accountId": 1,
+    "accountNumber": "SB8392017456",
+    "accountType": "SAVINGS",
+    "balance": 0.00,
+    "status": "ACTIVE",
+    "createdAt": "2026-05-17T..."
+  },
+  "timestamp": "2026-05-17T..."
+}
+```
+
+---
+
+## Step 4: Create Current Account
+
+Same API use कर:
+
+```http
+POST http://localhost:8080/api/accounts
+```
+
+Body:
+
+```json
+{
+  "accountType": "CURRENT"
+}
+```
+
+---
+
+## Step 5: Get My Accounts
+
+### Request
+
+```http
+GET http://localhost:8080/api/accounts/my
+```
+
+### Authorization
+
+```text
+Bearer Token required
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "Accounts fetched successfully",
+  "data": [
+    {
+      "accountId": 1,
+      "accountNumber": "SB8392017456",
+      "accountType": "SAVINGS",
+      "balance": 0.00,
+      "status": "ACTIVE",
+      "createdAt": "2026-05-17T..."
+    },
+    {
+      "accountId": 2,
+      "accountNumber": "SB9328174650",
+      "accountType": "CURRENT",
+      "balance": 0.00,
+      "status": "ACTIVE",
+      "createdAt": "2026-05-17T..."
+    }
+  ],
+  "timestamp": "2026-05-17T..."
+}
+```
+
+---
+
+## Step 6: Check Account Balance
+
+### Request
+
+```http
+GET http://localhost:8080/api/accounts/1/balance
+```
+
+### Authorization
+
+```text
+Bearer Token required
+```
+
+### Expected Response
+
+```json
+{
+  "success": true,
+  "message": "Account balance fetched successfully",
+  "data": {
+    "accountId": 1,
+    "accountNumber": "SB8392017456",
+    "balance": 0.00,
+    "status": "ACTIVE"
+  },
+  "timestamp": "2026-05-17T..."
+}
+```
+
+---
+
+# 9. Test Unauthorized Access
+
+Token शिवाय API hit कर:
+
+```http
+GET http://localhost:8080/api/accounts/my
+```
+
+Expected:
+
+```json
+{
+  "success": false,
+  "message": "Unauthorized"
+}
+```
+
+किंवा Spring Security default 401 response येऊ शकतो.
+
+---
+
+# 10. Test Other User Account Access
+
+## Steps
+
+1. User A login करा.
+2. User A account create करा.
+3. User B register/login करा.
+4. User B token वापरून User A च्या account balance API ला hit करा.
+
+```http
+GET http://localhost:8080/api/accounts/1/balance
+```
+
+Expected:
+
+```json
+{
+  "success": false,
+  "message": "Account not found or you do not have access to this account",
+  "data": null,
+  "timestamp": "..."
+}
+```
+
+हा important security test आहे.
+
+---
+
+# 11. MySQL Checking
+
+```sql
+USE smart_banking_db;
+
+SELECT * FROM bank_accounts;
+```
+
+Expected columns:
+
+```text
+id
+account_number
+account_type
+balance
+status
+user_id
+created_at
+updated_at
+```
+
+User-wise accounts check करण्यासाठी:
+
+```sql
+SELECT 
+    ba.id,
+    ba.account_number,
+    ba.account_type,
+    ba.balance,
+    ba.status,
+    u.email
+FROM bank_accounts ba
+JOIN users u ON ba.user_id = u.id;
+```
+
+---
+
+# 12. Common Errors and Fixes
+
+## Error 1: 403 Forbidden on `/api/accounts`
+
+Reason: Token missing किंवा invalid आहे.
+
+Fix:
+
+```text
+Postman -> Authorization -> Bearer Token -> paste valid token
+```
+
+---
+
+## Error 2: `Account type is required`
+
+Request body empty आहे किंवा field missing आहे.
+
+Wrong:
+
+```json
+{}
+```
+
+Correct:
+
+```json
+{
+  "accountType": "SAVINGS"
+}
+```
+
+---
+
+## Error 3: JSON parse error for accountType
+
+Wrong value:
+
+```json
+{
+  "accountType": "saving"
+}
+```
+
+Correct enum value uppercase पाहिजे:
+
+```json
+{
+  "accountType": "SAVINGS"
+}
+```
+
+Allowed values:
+
+```text
+SAVINGS
+CURRENT
+```
+
+---
+
+## Error 4: User not found
+
+Reason: Token मधील email database मध्ये नाही.
+
+Fix:
+
+```text
+Login करून fresh token घ्या.
+Old token वापरू नका.
+```
+
+---
+
+## Error 5: Account not found or you do not have access
+
+Reason:
+
+```text
+Account id चुकीचा आहे
+किंवा account दुसऱ्या user चा आहे
+```
+
+Fix:
+
+```http
+GET /api/accounts/my
+```
+
+या API मधून correct accountId घ्या.
+
+---
+
+## Error 6: Lombok methods not generated
+
+Eclipse मध्ये:
+
+```text
+Project -> Clean
+Right click project -> Maven -> Update Project
+```
+
+जर तरी issue असेल:
+
+```text
+Help -> Eclipse Marketplace -> Lombok install करा
+Restart Eclipse
+```
+
+---
+
+# 13. Files Created/Updated
+
+```text
+Created:
+
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/AccountCreateRequest.java
+
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/AccountResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/account/dto/BalanceResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/account/service/AccountService.java
+
+smart-banking-backend/src/main/java/com/smartbanking/account/service/impl/AccountServiceImpl.java
+
+smart-banking-backend/src/main/java/com/smartbanking/account/controller/AccountController.java
+
+
+Updated:
+
+smart-banking-backend/src/main/java/com/smartbanking/account/repository/BankAccountRepository.java
+```
+
+---
+
+# 14. What Was Implemented
+
+```text
+✅ Logged-in user can create bank account
+✅ JWT token मधून logged-in user identify केला
+✅ UserId manually pass करायची गरज नाही
+✅ Account number auto-generate केला
+✅ Initial balance 0 ठेवला
+✅ Account status ACTIVE ठेवला
+✅ User can view own accounts
+✅ User can check own account balance
+✅ User cannot access another user's account
+✅ DTO pattern followed
+✅ Service interface + ServiceImpl pattern followed
+✅ Validation added
+✅ Proper exception handling added
+```
+
+---
+
+# 15. APIs Created
+
+| Method | API                                 | Access              | Purpose                        |
+| ------ | ----------------------------------- | ------------------- | ------------------------------ |
+| POST   | `/api/accounts`                     | USER/ADMIN with JWT | Create bank account            |
+| GET    | `/api/accounts/my`                  | USER/ADMIN with JWT | View logged-in user's accounts |
+| GET    | `/api/accounts/{accountId}/balance` | USER/ADMIN with JWT | Check own account balance      |
+
+---
+
+# 16. Git Commands to Push Phase 5
+
+Monorepo root folder मध्ये जा:
+
+```bash
+cd "C:\Users\gaura\OneDrive\Desktop\PROJECTS\Smart Banking System"
+```
+
+Status check:
+
+```bash
+git status
+```
+
+Files add करा:
+
+```bash
+git add .
+```
+
+Commit करा:
+
+```bash
+git commit -m "Phase 5: Implement bank account management module"
+```
+
+Push करा:
+
+```bash
+git push origin main
+```
+
+---
+
+# 17. Updated PROGRESS SUMMARY for Phase 6
+
+```text
+PROGRESS SUMMARY:
+
+✅ Phase 1 Complete: Requirement analysis done
+✅ GitHub repository planned
+✅ Monorepo structure planned
+✅ Modules finalized
+
+✅ Phase 2 Complete: Spring Boot Backend Setup done
+- Spring Boot backend project created
+- Project name: smart-banking-backend
+- Package name: com.smartbanking
+- Java 17 configured
+- Maven pom.xml created with required dependencies
+- MySQL database configuration added
+- Basic package structure created
+- HealthController test API created
+- Swagger configured
+- Backend running successfully
+
+✅ Phase 3 Complete: Database Design, Entities, Enums, and Repositories done
+- User entity created
+- BankAccount entity created
+- Transaction entity created
+- Role enum created: USER, ADMIN
+- AccountType enum created: SAVINGS, CURRENT
+- AccountStatus enum created: ACTIVE, FROZEN, CLOSED
+- TransactionType enum created: DEPOSIT, WITHDRAW, TRANSFER
+- TransactionStatus enum created: SUCCESS, FAILED, PENDING
+- One User can have many BankAccounts relationship added
+- One BankAccount can have many Transactions relationship added
+- UserRepository created
+- BankAccountRepository created
+- TransactionRepository created
+
+✅ Phase 4 Complete: Authentication Module with JWT + Spring Security done
+- Register API implemented
+- Login API implemented
+- BCrypt password encryption added
+- JWT token generation added
+- JWT authentication filter added
+- CustomUserDetailsService implemented
+- SecurityConfig updated
+- Stateless JWT security configured
+- Role-based access prepared for USER and ADMIN
+- ApiResponse common response structure added
+- GlobalExceptionHandler added
+- Validation added
+- Protected profile API added
+- Postman testing steps completed
+
+✅ Phase 5 Complete: Bank Account Management Module done
+- AccountCreateRequest DTO created
+- AccountResponse DTO created
+- BalanceResponse DTO created
+- AccountService interface created
+- AccountServiceImpl created
+- AccountController created
+- Logged-in user can create bank account
+- User can view own accounts
+- User can check account balance
+- Account number auto-generation added
+- Initial balance set to 0
+- Account status set to ACTIVE
+- Ownership check added
+- User cannot access another user's account
+- Postman testing steps completed
+
+PHASE 6: Banking Transaction Module
+
+Next implement banking operations:
+
+1. Deposit money
+2. Withdraw money
+3. Fund transfer from one account to another
+4. Use @Transactional for transfer
+5. Validate:
+   - Amount must be greater than 0
+   - Account must be ACTIVE
+   - User can withdraw only from own account
+   - Sender must have sufficient balance
+   - Receiver account must exist
+6. Save transaction records
+7. Create DTOs:
+   - DepositRequest
+   - WithdrawRequest
+   - TransferRequest
+   - TransactionResponse
+8. APIs:
+   - POST /api/transactions/deposit
+   - POST /api/transactions/withdraw
+   - POST /api/transactions/transfer
+9. Explain @Transactional in simple language
+10. Postman testing step-by-step
+11. Common errors and fixes
+12. Give Git commands to push Phase 6
+```
+
+Phase 5 complete ✅
 
 
 
