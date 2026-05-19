@@ -6,6 +6,7 @@ import com.smartbanking.account.repository.BankAccountRepository;
 import com.smartbanking.exception.BadRequestException;
 import com.smartbanking.exception.ResourceNotFoundException;
 import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.MiniStatementResponse;
 import com.smartbanking.transaction.dto.TransactionResponse;
 import com.smartbanking.transaction.dto.TransferRequest;
 import com.smartbanking.transaction.dto.WithdrawRequest;
@@ -14,257 +15,297 @@ import com.smartbanking.transaction.entity.TransactionStatus;
 import com.smartbanking.transaction.entity.TransactionType;
 import com.smartbanking.transaction.repository.TransactionRepository;
 import com.smartbanking.transaction.service.TransactionService;
+import com.smartbanking.util.PageResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class TransactionServiceImpl implements TransactionService {
 
-    private final BankAccountRepository bankAccountRepository;
-    private final TransactionRepository transactionRepository;
-    
-    /*
-     * Deposit method does two tasks:
-     * 1. Updates the account balance
-     * 2. Saves the transaction record
-     *
-     * So we use @Transactional here.
-     */
-    @Override
-    @Transactional
-    public TransactionResponse deposit(DepositRequest request, String userEmail) {
+	private final BankAccountRepository bankAccountRepository;
+	private final TransactionRepository transactionRepository;
 
-        validateAmount(request.getAmount());
+	@Override
+	@Transactional
+	public TransactionResponse deposit(DepositRequest request, String userEmail) {
 
-        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Account not found or you do not have access to this account"
-                ));
+		validateAmount(request.getAmount());
 
-        validateAccountActive(account);
+		BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail).orElseThrow(
+				() -> new ResourceNotFoundException("Account not found or you do not have access to this account"));
 
-        BigDecimal newBalance = account.getBalance().add(request.getAmount());
-        account.setBalance(newBalance);
+		validateAccountActive(account);
 
-        BankAccount savedAccount = bankAccountRepository.save(account);
+		BigDecimal newBalance = account.getBalance().add(request.getAmount());
+		account.setBalance(newBalance);
 
-        Transaction transaction = createTransaction(
-                savedAccount,
-                TransactionType.DEPOSIT,
-                request.getAmount(),
-                savedAccount.getAccountNumber(),
-                savedAccount.getAccountNumber(),
-                getDescriptionOrDefault(request.getDescription(), "Money deposited successfully")
-        );
+		BankAccount savedAccount = bankAccountRepository.save(account);
 
-        Transaction savedTransaction = transactionRepository.save(transaction);
+		Transaction transaction = createTransaction(savedAccount, TransactionType.DEPOSIT, request.getAmount(),
+				savedAccount.getAccountNumber(), savedAccount.getAccountNumber(),
+				getDescriptionOrDefault(request.getDescription(), "Money deposited successfully"));
 
-        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
-    }
+		Transaction savedTransaction = transactionRepository.save(transaction);
 
-    /*
-     * Withdraw मध्ये balance कमी करतो आणि transaction record save करतो.
-     */
-    @Override
-    @Transactional
-    public TransactionResponse withdraw(WithdrawRequest request, String userEmail) {
+		return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+	}
 
-        validateAmount(request.getAmount());
+	@Override
+	@Transactional
+	public TransactionResponse withdraw(WithdrawRequest request, String userEmail) {
 
-        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Account not found or you do not have access to this account"
-                ));
+		validateAmount(request.getAmount());
 
-        validateAccountActive(account);
-        validateSufficientBalance(account, request.getAmount());
+		BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail).orElseThrow(
+				() -> new ResourceNotFoundException("Account not found or you do not have access to this account"));
 
-        BigDecimal newBalance = account.getBalance().subtract(request.getAmount());
-        account.setBalance(newBalance);
+		validateAccountActive(account);
+		validateSufficientBalance(account, request.getAmount());
 
-        BankAccount savedAccount = bankAccountRepository.save(account);
+		BigDecimal newBalance = account.getBalance().subtract(request.getAmount());
+		account.setBalance(newBalance);
 
-        Transaction transaction = createTransaction(
-                savedAccount,
-                TransactionType.WITHDRAW,
-                request.getAmount(),
-                savedAccount.getAccountNumber(),
-                savedAccount.getAccountNumber(),
-                getDescriptionOrDefault(request.getDescription(), "Money withdrawn successfully")
-        );
+		BankAccount savedAccount = bankAccountRepository.save(account);
 
-        Transaction savedTransaction = transactionRepository.save(transaction);
+		Transaction transaction = createTransaction(savedAccount, TransactionType.WITHDRAW, request.getAmount(),
+				savedAccount.getAccountNumber(), savedAccount.getAccountNumber(),
+				getDescriptionOrDefault(request.getDescription(), "Money withdrawn successfully"));
 
-        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
-    }
+		Transaction savedTransaction = transactionRepository.save(transaction);
 
-    /*
-     * Fund transfer सर्वात important operation आहे.
-     * Sender कडून पैसे cut होतात आणि receiver कडे add होतात.
-     * मध्ये error आली तर complete rollback होण्यासाठी @Transactional वापरले आहे.
-     */
-    @Override
-    @Transactional
-    public TransactionResponse transfer(TransferRequest request, String userEmail) {
+		return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+	}
 
-        validateAmount(request.getAmount());
+	@Override
+	@Transactional
+	public TransactionResponse transfer(TransferRequest request, String userEmail) {
 
-        BankAccount senderAccount = bankAccountRepository.findByIdAndUserEmail(
-                        request.getFromAccountId(),
-                        userEmail
-                )
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Sender account not found or you do not have access to this account"
-                ));
+		validateAmount(request.getAmount());
 
-        BankAccount receiverAccount = bankAccountRepository.findByAccountNumber(request.getToAccountNumber())
-                .orElseThrow(() -> new ResourceNotFoundException("Receiver account not found"));
+		BankAccount senderAccount = bankAccountRepository.findByIdAndUserEmail(request.getFromAccountId(), userEmail)
+				.orElseThrow(() -> new ResourceNotFoundException(
+						"Sender account not found or you do not have access to this account"));
 
-        if (senderAccount.getAccountNumber().equals(receiverAccount.getAccountNumber())) {
-            throw new BadRequestException("Sender and receiver account cannot be same");
-        }
+		BankAccount receiverAccount = bankAccountRepository.findByAccountNumber(request.getToAccountNumber())
+				.orElseThrow(() -> new ResourceNotFoundException("Receiver account not found"));
 
-        validateAccountActive(senderAccount);
-        validateAccountActive(receiverAccount);
-        validateSufficientBalance(senderAccount, request.getAmount());
+		if (senderAccount.getAccountNumber().equals(receiverAccount.getAccountNumber())) {
+			throw new BadRequestException("Sender and receiver account cannot be same");
+		}
 
-        senderAccount.setBalance(senderAccount.getBalance().subtract(request.getAmount()));
-        receiverAccount.setBalance(receiverAccount.getBalance().add(request.getAmount()));
+		validateAccountActive(senderAccount);
+		validateAccountActive(receiverAccount);
+		validateSufficientBalance(senderAccount, request.getAmount());
 
-        BankAccount savedSenderAccount = bankAccountRepository.save(senderAccount);
-        BankAccount savedReceiverAccount = bankAccountRepository.save(receiverAccount);
+		senderAccount.setBalance(senderAccount.getBalance().subtract(request.getAmount()));
+		receiverAccount.setBalance(receiverAccount.getBalance().add(request.getAmount()));
 
-        /*
-         * Sender side transaction record.
-         */
-        Transaction senderTransaction = createTransaction(
-                savedSenderAccount,
-                TransactionType.TRANSFER,
-                request.getAmount(),
-                savedSenderAccount.getAccountNumber(),
-                savedReceiverAccount.getAccountNumber(),
-                getDescriptionOrDefault(
-                        request.getDescription(),
-                        "Money transferred to account " + savedReceiverAccount.getAccountNumber()
-                )
-        );
+		BankAccount savedSenderAccount = bankAccountRepository.save(senderAccount);
+		BankAccount savedReceiverAccount = bankAccountRepository.save(receiverAccount);
 
-        Transaction savedSenderTransaction = transactionRepository.save(senderTransaction);
+		Transaction senderTransaction = createTransaction(savedSenderAccount, TransactionType.TRANSFER,
+				request.getAmount(), savedSenderAccount.getAccountNumber(), savedReceiverAccount.getAccountNumber(),
+				getDescriptionOrDefault(request.getDescription(),
+						"Money transferred to account " + savedReceiverAccount.getAccountNumber()));
 
-        /*
-         * Receiver side transaction record.
-         * Receiver ला पण history मध्ये credit entry दिसावी म्हणून हा record save करतो.
-         */
-        Transaction receiverTransaction = createTransaction(
-                savedReceiverAccount,
-                TransactionType.TRANSFER,
-                request.getAmount(),
-                savedSenderAccount.getAccountNumber(),
-                savedReceiverAccount.getAccountNumber(),
-                "Money received from account " + savedSenderAccount.getAccountNumber()
-        );
+		Transaction savedSenderTransaction = transactionRepository.save(senderTransaction);
 
-        transactionRepository.save(receiverTransaction);
+		Transaction receiverTransaction = createTransaction(savedReceiverAccount, TransactionType.TRANSFER,
+				request.getAmount(), savedSenderAccount.getAccountNumber(), savedReceiverAccount.getAccountNumber(),
+				"Money received from account " + savedSenderAccount.getAccountNumber());
 
-        return mapToTransactionResponse(savedSenderTransaction, savedSenderAccount.getBalance());
-    }
+		transactionRepository.save(receiverTransaction);
 
-    private void validateAmount(BigDecimal amount) {
+		return mapToTransactionResponse(savedSenderTransaction, savedSenderAccount.getBalance());
+	}
 
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new BadRequestException("Amount must be greater than 0");
-        }
-    }
+	@Override
+	@Transactional(readOnly = true)
+	public PageResponse<TransactionResponse> getMyTransactions(String userEmail, TransactionType transactionType,
+			LocalDate startDate, LocalDate endDate, int page, int size) {
 
-    private void validateAccountActive(BankAccount account) {
+		validatePagination(page, size);
+		validateDateRange(startDate, endDate);
 
-        if (account.getStatus() != AccountStatus.ACTIVE) {
-            throw new BadRequestException("Account is not active");
-        }
-    }
+		Pageable pageable = PageRequest.of(page, size);
 
-    private void validateSufficientBalance(BankAccount account, BigDecimal amount) {
+		Page<Transaction> transactionPage = transactionRepository.searchUserTransactions(userEmail, transactionType,
+				toStartDateTime(startDate), toEndDateTime(endDate), pageable);
 
-        if (account.getBalance().compareTo(amount) < 0) {
-            throw new BadRequestException("Insufficient balance");
-        }
-    }
+		Page<TransactionResponse> responsePage = transactionPage
+				.map(transaction -> mapToTransactionResponse(transaction, transaction.getBankAccount().getBalance()));
 
-    private Transaction createTransaction(
-            BankAccount account,
-            TransactionType transactionType,
-            BigDecimal amount,
-            String fromAccountNumber,
-            String toAccountNumber,
-            String description
-    ) {
+		return PageResponse.fromPage(responsePage);
+	}
 
-        return Transaction.builder()
-                .referenceNumber(generateUniqueReferenceNumber())
-                .transactionType(transactionType)
-                .status(TransactionStatus.SUCCESS)
-                .amount(amount)
-                .fromAccountNumber(fromAccountNumber)
-                .toAccountNumber(toAccountNumber)
-                .description(description)
-                .bankAccount(account)
-                .build();
-    }
+	@Override
+	@Transactional(readOnly = true)
+	public PageResponse<TransactionResponse> getAccountTransactions(Long accountId, String userEmail,
+			TransactionType transactionType, LocalDate startDate, LocalDate endDate, int page, int size) {
 
-    private String generateUniqueReferenceNumber() {
+		validatePagination(page, size);
+		validateDateRange(startDate, endDate);
 
-        String referenceNumber;
+		/*
+		 * First ownership check. यामुळे user दुसऱ्याचा account history पाहू शकणार नाही.
+		 */
+		bankAccountRepository.findByIdAndUserEmail(accountId, userEmail).orElseThrow(
+				() -> new ResourceNotFoundException("Account not found or you do not have access to this account"));
 
-        do {
-            String dateTimePart = LocalDateTime.now()
-                    .format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+		Pageable pageable = PageRequest.of(page, size);
 
-            String randomPart = UUID.randomUUID()
-                    .toString()
-                    .replace("-", "")
-                    .substring(0, 8)
-                    .toUpperCase();
+		Page<Transaction> transactionPage = transactionRepository.searchAccountTransactions(accountId, userEmail,
+				transactionType, toStartDateTime(startDate), toEndDateTime(endDate), pageable);
 
-            referenceNumber = "TXN" + dateTimePart + randomPart;
+		Page<TransactionResponse> responsePage = transactionPage
+				.map(transaction -> mapToTransactionResponse(transaction, transaction.getBankAccount().getBalance()));
 
-        } while (transactionRepository.existsByReferenceNumber(referenceNumber));
+		return PageResponse.fromPage(responsePage);
+	}
 
-        return referenceNumber;
-    }
+	@Override
+	@Transactional(readOnly = true)
+	public MiniStatementResponse getMiniStatement(Long accountId, String userEmail) {
 
-    private String getDescriptionOrDefault(String description, String defaultDescription) {
+		BankAccount account = bankAccountRepository.findByIdAndUserEmail(accountId, userEmail).orElseThrow(
+				() -> new ResourceNotFoundException("Account not found or you do not have access to this account"));
 
-        if (description == null || description.trim().isEmpty()) {
-            return defaultDescription;
-        }
+		/*
+		 * Mini statement मध्ये latest 10 transactions दाखवतो.
+		 */
+		Pageable latestTen = PageRequest.of(0, 10);
 
-        return description.trim();
-    }
+		List<Transaction> transactions = transactionRepository.findMiniStatementTransactions(accountId, userEmail,
+				latestTen);
 
-    private TransactionResponse mapToTransactionResponse(Transaction transaction, BigDecimal currentBalance) {
+		List<TransactionResponse> transactionResponses = transactions.stream()
+				.map(transaction -> mapToTransactionResponse(transaction, account.getBalance())).toList();
 
-        BankAccount account = transaction.getBankAccount();
+		long totalTransactions = transactionRepository.countAccountTransactions(accountId, userEmail);
 
-        return TransactionResponse.builder()
-                .transactionId(transaction.getId())
-                .referenceNumber(transaction.getReferenceNumber())
-                .accountId(account.getId())
-                .accountNumber(account.getAccountNumber())
-                .transactionType(transaction.getTransactionType())
-                .status(transaction.getStatus())
-                .amount(transaction.getAmount())
-                .currentBalance(currentBalance)
-                .fromAccountNumber(transaction.getFromAccountNumber())
-                .toAccountNumber(transaction.getToAccountNumber())
-                .description(transaction.getDescription())
-                .createdAt(transaction.getCreatedAt())
-                .build();
-    }
+		return MiniStatementResponse.builder().bankName("Smart Banking System").userName(account.getUser().getName())
+				.userEmail(account.getUser().getEmail()).accountId(account.getId())
+				.accountNumber(account.getAccountNumber()).accountType(account.getAccountType())
+				.status(account.getStatus()).currentBalance(account.getBalance()).generatedAt(LocalDateTime.now())
+				.totalTransactions(totalTransactions).transactions(transactionResponses).build();
+	}
+
+	private void validateAmount(BigDecimal amount) {
+
+		if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+			throw new BadRequestException("Amount must be greater than 0");
+		}
+	}
+
+	private void validateAccountActive(BankAccount account) {
+
+		if (account.getStatus() != AccountStatus.ACTIVE) {
+			throw new BadRequestException("Account is not active");
+		}
+	}
+
+	private void validateSufficientBalance(BankAccount account, BigDecimal amount) {
+
+		if (account.getBalance().compareTo(amount) < 0) {
+			throw new BadRequestException("Insufficient balance");
+		}
+	}
+
+	private void validatePagination(int page, int size) {
+
+		if (page < 0) {
+			throw new BadRequestException("Page number cannot be negative");
+		}
+
+		if (size <= 0) {
+			throw new BadRequestException("Page size must be greater than 0");
+		}
+
+		if (size > 50) {
+			throw new BadRequestException("Page size cannot be greater than 50");
+		}
+	}
+
+	private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+
+		if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+			throw new BadRequestException("Start date cannot be after end date");
+		}
+	}
+
+	private LocalDateTime toStartDateTime(LocalDate startDate) {
+
+		if (startDate == null) {
+			return null;
+		}
+
+		return startDate.atStartOfDay();
+	}
+
+	private LocalDateTime toEndDateTime(LocalDate endDate) {
+
+		if (endDate == null) {
+			return null;
+		}
+
+		return endDate.atTime(LocalTime.MAX);
+	}
+
+	private Transaction createTransaction(BankAccount account, TransactionType transactionType, BigDecimal amount,
+			String fromAccountNumber, String toAccountNumber, String description) {
+
+		return Transaction.builder().referenceNumber(generateUniqueReferenceNumber()).transactionType(transactionType)
+				.status(TransactionStatus.SUCCESS).amount(amount).fromAccountNumber(fromAccountNumber)
+				.toAccountNumber(toAccountNumber).description(description).bankAccount(account).build();
+	}
+
+	private String generateUniqueReferenceNumber() {
+
+		String referenceNumber;
+
+		do {
+			String dateTimePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+			String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
+
+			referenceNumber = "TXN" + dateTimePart + randomPart;
+
+		} while (transactionRepository.existsByReferenceNumber(referenceNumber));
+
+		return referenceNumber;
+	}
+
+	private String getDescriptionOrDefault(String description, String defaultDescription) {
+
+		if (description == null || description.trim().isEmpty()) {
+			return defaultDescription;
+		}
+
+		return description.trim();
+	}
+
+	private TransactionResponse mapToTransactionResponse(Transaction transaction, BigDecimal currentBalance) {
+
+		BankAccount account = transaction.getBankAccount();
+
+		return TransactionResponse.builder().transactionId(transaction.getId())
+				.referenceNumber(transaction.getReferenceNumber()).accountId(account.getId())
+				.accountNumber(account.getAccountNumber()).transactionType(transaction.getTransactionType())
+				.status(transaction.getStatus()).amount(transaction.getAmount()).currentBalance(currentBalance)
+				.fromAccountNumber(transaction.getFromAccountNumber()).toAccountNumber(transaction.getToAccountNumber())
+				.description(transaction.getDescription()).createdAt(transaction.getCreatedAt()).build();
+	}
 }

@@ -10238,6 +10238,1611 @@ At the end give updated PROGRESS SUMMARY for Phase 8.
 
 ### Ans=========>
 
+Gaurav, चला **Phase 7: Transaction History + Mini Statement** सुरू करूया ✅
+तुझ्या uploaded prompt मध्ये Phase 7 साठी transaction history, account-wise history, filters, pagination आणि mini statement APIs मागितले आहेत. 
+
+# PHASE 7: Transaction History + Mini Statement
+
+या phase मध्ये आपण हे implement करणार:
+
+```text
+GET /api/transactions/my
+GET /api/transactions/account/{accountId}
+GET /api/transactions/account/{accountId}/mini-statement
+```
+
+Mini statement इथे **JSON response** असेल. PDF statement आपण पुढच्या PDF phase मध्ये करणार.
+
+---
+
+# 1. Create PageResponse DTO
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/util/PageResponse.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.util;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.springframework.data.domain.Page;
+
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class PageResponse<T> {
+
+    private List<T> content;
+
+    private int pageNo;
+    private int pageSize;
+
+    private long totalElements;
+    private int totalPages;
+
+    private boolean last;
+
+    public static <T> PageResponse<T> fromPage(Page<T> page) {
+        return PageResponse.<T>builder()
+                .content(page.getContent())
+                .pageNo(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .last(page.isLast())
+                .build();
+    }
+}
+```
+
+Simple meaning:
+
+Pagination response मध्ये data सोबत page details येतील.
+
+```json
+{
+  "content": [],
+  "pageNo": 0,
+  "pageSize": 10,
+  "totalElements": 25,
+  "totalPages": 3,
+  "last": false
+}
+```
+
+---
+
+# 2. Create MiniStatementResponse DTO
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/MiniStatementResponse.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.dto;
+
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.AccountType;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class MiniStatementResponse {
+
+    private String bankName;
+
+    private String userName;
+    private String userEmail;
+
+    private Long accountId;
+    private String accountNumber;
+    private AccountType accountType;
+    private AccountStatus status;
+    private BigDecimal currentBalance;
+
+    private LocalDateTime generatedAt;
+
+    private long totalTransactions;
+
+    private List<TransactionResponse> transactions;
+}
+```
+
+---
+
+# 3. Update TransactionRepository
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/repository/TransactionRepository.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.repository;
+
+import com.smartbanking.transaction.entity.Transaction;
+import com.smartbanking.transaction.entity.TransactionType;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
+
+public interface TransactionRepository extends JpaRepository<Transaction, Long> {
+
+    /*
+     * Reference number varun transaction find karaycha.
+     */
+    Optional<Transaction> findByReferenceNumber(String referenceNumber);
+
+    /*
+     * Reference number duplicate aahe ka check karaycha.
+     */
+    boolean existsByReferenceNumber(String referenceNumber);
+
+    /*
+     * Specific account che transactions latest first.
+     * Old method Phase 6 madhun ठेवली आहे.
+     */
+    List<Transaction> findByBankAccountIdOrderByCreatedAtDesc(Long bankAccountId);
+
+    /*
+     * Account + transaction type filter.
+     * Old method Phase 6 madhun ठेवली आहे.
+     */
+    List<Transaction> findByBankAccountIdAndTransactionTypeOrderByCreatedAtDesc(
+            Long bankAccountId,
+            TransactionType transactionType
+    );
+
+    /*
+     * Account + date range filter.
+     * Old method Phase 6 madhun ठेवली आहे.
+     */
+    List<Transaction> findByBankAccountIdAndCreatedAtBetweenOrderByCreatedAtDesc(
+            Long bankAccountId,
+            LocalDateTime startDate,
+            LocalDateTime endDate
+    );
+
+    /*
+     * Logged-in user che all transactions with optional filters.
+     */
+    @Query(
+            value = """
+                    SELECT t FROM Transaction t
+                    JOIN t.bankAccount ba
+                    JOIN ba.user u
+                    WHERE u.email = :userEmail
+                    AND (:transactionType IS NULL OR t.transactionType = :transactionType)
+                    AND (:startDateTime IS NULL OR t.createdAt >= :startDateTime)
+                    AND (:endDateTime IS NULL OR t.createdAt <= :endDateTime)
+                    ORDER BY t.createdAt DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(t) FROM Transaction t
+                    JOIN t.bankAccount ba
+                    JOIN ba.user u
+                    WHERE u.email = :userEmail
+                    AND (:transactionType IS NULL OR t.transactionType = :transactionType)
+                    AND (:startDateTime IS NULL OR t.createdAt >= :startDateTime)
+                    AND (:endDateTime IS NULL OR t.createdAt <= :endDateTime)
+                    """
+    )
+    Page<Transaction> searchUserTransactions(
+            @Param("userEmail") String userEmail,
+            @Param("transactionType") TransactionType transactionType,
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime,
+            Pageable pageable
+    );
+
+    /*
+     * Specific account transactions with optional filters.
+     * User ownership check query madhyeच आहे.
+     */
+    @Query(
+            value = """
+                    SELECT t FROM Transaction t
+                    JOIN t.bankAccount ba
+                    JOIN ba.user u
+                    WHERE ba.id = :accountId
+                    AND u.email = :userEmail
+                    AND (:transactionType IS NULL OR t.transactionType = :transactionType)
+                    AND (:startDateTime IS NULL OR t.createdAt >= :startDateTime)
+                    AND (:endDateTime IS NULL OR t.createdAt <= :endDateTime)
+                    ORDER BY t.createdAt DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(t) FROM Transaction t
+                    JOIN t.bankAccount ba
+                    JOIN ba.user u
+                    WHERE ba.id = :accountId
+                    AND u.email = :userEmail
+                    AND (:transactionType IS NULL OR t.transactionType = :transactionType)
+                    AND (:startDateTime IS NULL OR t.createdAt >= :startDateTime)
+                    AND (:endDateTime IS NULL OR t.createdAt <= :endDateTime)
+                    """
+    )
+    Page<Transaction> searchAccountTransactions(
+            @Param("accountId") Long accountId,
+            @Param("userEmail") String userEmail,
+            @Param("transactionType") TransactionType transactionType,
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime,
+            Pageable pageable
+    );
+
+    /*
+     * Mini statement sathi latest transactions.
+     */
+    @Query("""
+            SELECT t FROM Transaction t
+            JOIN t.bankAccount ba
+            JOIN ba.user u
+            WHERE ba.id = :accountId
+            AND u.email = :userEmail
+            ORDER BY t.createdAt DESC
+            """)
+    List<Transaction> findMiniStatementTransactions(
+            @Param("accountId") Long accountId,
+            @Param("userEmail") String userEmail,
+            Pageable pageable
+    );
+
+    /*
+     * Mini statement मध्ये total transaction count दाखवण्यासाठी.
+     */
+    @Query("""
+            SELECT COUNT(t) FROM Transaction t
+            JOIN t.bankAccount ba
+            JOIN ba.user u
+            WHERE ba.id = :accountId
+            AND u.email = :userEmail
+            """)
+    long countAccountTransactions(
+            @Param("accountId") Long accountId,
+            @Param("userEmail") String userEmail
+    );
+}
+```
+
+---
+
+# 4. Update TransactionService Interface
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/TransactionService.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.service;
+
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.MiniStatementResponse;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+import com.smartbanking.transaction.entity.TransactionType;
+import com.smartbanking.util.PageResponse;
+
+import java.time.LocalDate;
+
+public interface TransactionService {
+
+    TransactionResponse deposit(DepositRequest request, String userEmail);
+
+    TransactionResponse withdraw(WithdrawRequest request, String userEmail);
+
+    TransactionResponse transfer(TransferRequest request, String userEmail);
+
+    PageResponse<TransactionResponse> getMyTransactions(
+            String userEmail,
+            TransactionType transactionType,
+            LocalDate startDate,
+            LocalDate endDate,
+            int page,
+            int size
+    );
+
+    PageResponse<TransactionResponse> getAccountTransactions(
+            Long accountId,
+            String userEmail,
+            TransactionType transactionType,
+            LocalDate startDate,
+            LocalDate endDate,
+            int page,
+            int size
+    );
+
+    MiniStatementResponse getMiniStatement(Long accountId, String userEmail);
+}
+```
+
+---
+
+# 5. Update TransactionServiceImpl
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/impl/TransactionServiceImpl.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.service.impl;
+
+import com.smartbanking.account.entity.AccountStatus;
+import com.smartbanking.account.entity.BankAccount;
+import com.smartbanking.account.repository.BankAccountRepository;
+import com.smartbanking.exception.BadRequestException;
+import com.smartbanking.exception.ResourceNotFoundException;
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.MiniStatementResponse;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+import com.smartbanking.transaction.entity.Transaction;
+import com.smartbanking.transaction.entity.TransactionStatus;
+import com.smartbanking.transaction.entity.TransactionType;
+import com.smartbanking.transaction.repository.TransactionRepository;
+import com.smartbanking.transaction.service.TransactionService;
+import com.smartbanking.util.PageResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
+import java.util.UUID;
+
+@Service
+@RequiredArgsConstructor
+public class TransactionServiceImpl implements TransactionService {
+
+    private final BankAccountRepository bankAccountRepository;
+    private final TransactionRepository transactionRepository;
+
+    @Override
+    @Transactional
+    public TransactionResponse deposit(DepositRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        validateAccountActive(account);
+
+        BigDecimal newBalance = account.getBalance().add(request.getAmount());
+        account.setBalance(newBalance);
+
+        BankAccount savedAccount = bankAccountRepository.save(account);
+
+        Transaction transaction = createTransaction(
+                savedAccount,
+                TransactionType.DEPOSIT,
+                request.getAmount(),
+                savedAccount.getAccountNumber(),
+                savedAccount.getAccountNumber(),
+                getDescriptionOrDefault(request.getDescription(), "Money deposited successfully")
+        );
+
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse withdraw(WithdrawRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(request.getAccountId(), userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        validateAccountActive(account);
+        validateSufficientBalance(account, request.getAmount());
+
+        BigDecimal newBalance = account.getBalance().subtract(request.getAmount());
+        account.setBalance(newBalance);
+
+        BankAccount savedAccount = bankAccountRepository.save(account);
+
+        Transaction transaction = createTransaction(
+                savedAccount,
+                TransactionType.WITHDRAW,
+                request.getAmount(),
+                savedAccount.getAccountNumber(),
+                savedAccount.getAccountNumber(),
+                getDescriptionOrDefault(request.getDescription(), "Money withdrawn successfully")
+        );
+
+        Transaction savedTransaction = transactionRepository.save(transaction);
+
+        return mapToTransactionResponse(savedTransaction, savedAccount.getBalance());
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse transfer(TransferRequest request, String userEmail) {
+
+        validateAmount(request.getAmount());
+
+        BankAccount senderAccount = bankAccountRepository.findByIdAndUserEmail(
+                        request.getFromAccountId(),
+                        userEmail
+                )
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sender account not found or you do not have access to this account"
+                ));
+
+        BankAccount receiverAccount = bankAccountRepository.findByAccountNumber(request.getToAccountNumber())
+                .orElseThrow(() -> new ResourceNotFoundException("Receiver account not found"));
+
+        if (senderAccount.getAccountNumber().equals(receiverAccount.getAccountNumber())) {
+            throw new BadRequestException("Sender and receiver account cannot be same");
+        }
+
+        validateAccountActive(senderAccount);
+        validateAccountActive(receiverAccount);
+        validateSufficientBalance(senderAccount, request.getAmount());
+
+        senderAccount.setBalance(senderAccount.getBalance().subtract(request.getAmount()));
+        receiverAccount.setBalance(receiverAccount.getBalance().add(request.getAmount()));
+
+        BankAccount savedSenderAccount = bankAccountRepository.save(senderAccount);
+        BankAccount savedReceiverAccount = bankAccountRepository.save(receiverAccount);
+
+        Transaction senderTransaction = createTransaction(
+                savedSenderAccount,
+                TransactionType.TRANSFER,
+                request.getAmount(),
+                savedSenderAccount.getAccountNumber(),
+                savedReceiverAccount.getAccountNumber(),
+                getDescriptionOrDefault(
+                        request.getDescription(),
+                        "Money transferred to account " + savedReceiverAccount.getAccountNumber()
+                )
+        );
+
+        Transaction savedSenderTransaction = transactionRepository.save(senderTransaction);
+
+        Transaction receiverTransaction = createTransaction(
+                savedReceiverAccount,
+                TransactionType.TRANSFER,
+                request.getAmount(),
+                savedSenderAccount.getAccountNumber(),
+                savedReceiverAccount.getAccountNumber(),
+                "Money received from account " + savedSenderAccount.getAccountNumber()
+        );
+
+        transactionRepository.save(receiverTransaction);
+
+        return mapToTransactionResponse(savedSenderTransaction, savedSenderAccount.getBalance());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<TransactionResponse> getMyTransactions(
+            String userEmail,
+            TransactionType transactionType,
+            LocalDate startDate,
+            LocalDate endDate,
+            int page,
+            int size
+    ) {
+
+        validatePagination(page, size);
+        validateDateRange(startDate, endDate);
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<Transaction> transactionPage = transactionRepository.searchUserTransactions(
+                userEmail,
+                transactionType,
+                toStartDateTime(startDate),
+                toEndDateTime(endDate),
+                pageable
+        );
+
+        Page<TransactionResponse> responsePage = transactionPage.map(transaction ->
+                mapToTransactionResponse(transaction, transaction.getBankAccount().getBalance())
+        );
+
+        return PageResponse.fromPage(responsePage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public PageResponse<TransactionResponse> getAccountTransactions(
+            Long accountId,
+            String userEmail,
+            TransactionType transactionType,
+            LocalDate startDate,
+            LocalDate endDate,
+            int page,
+            int size
+    ) {
+
+        validatePagination(page, size);
+        validateDateRange(startDate, endDate);
+
+        /*
+         * First ownership check.
+         * यामुळे user दुसऱ्याचा account history पाहू शकणार नाही.
+         */
+        bankAccountRepository.findByIdAndUserEmail(accountId, userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        Pageable pageable = PageRequest.of(page, size);
+
+        Page<Transaction> transactionPage = transactionRepository.searchAccountTransactions(
+                accountId,
+                userEmail,
+                transactionType,
+                toStartDateTime(startDate),
+                toEndDateTime(endDate),
+                pageable
+        );
+
+        Page<TransactionResponse> responsePage = transactionPage.map(transaction ->
+                mapToTransactionResponse(transaction, transaction.getBankAccount().getBalance())
+        );
+
+        return PageResponse.fromPage(responsePage);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public MiniStatementResponse getMiniStatement(Long accountId, String userEmail) {
+
+        BankAccount account = bankAccountRepository.findByIdAndUserEmail(accountId, userEmail)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Account not found or you do not have access to this account"
+                ));
+
+        /*
+         * Mini statement मध्ये latest 10 transactions दाखवतो.
+         */
+        Pageable latestTen = PageRequest.of(0, 10);
+
+        List<Transaction> transactions = transactionRepository.findMiniStatementTransactions(
+                accountId,
+                userEmail,
+                latestTen
+        );
+
+        List<TransactionResponse> transactionResponses = transactions.stream()
+                .map(transaction -> mapToTransactionResponse(transaction, account.getBalance()))
+                .toList();
+
+        long totalTransactions = transactionRepository.countAccountTransactions(accountId, userEmail);
+
+        return MiniStatementResponse.builder()
+                .bankName("Smart Banking System")
+                .userName(account.getUser().getName())
+                .userEmail(account.getUser().getEmail())
+                .accountId(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .accountType(account.getAccountType())
+                .status(account.getStatus())
+                .currentBalance(account.getBalance())
+                .generatedAt(LocalDateTime.now())
+                .totalTransactions(totalTransactions)
+                .transactions(transactionResponses)
+                .build();
+    }
+
+    private void validateAmount(BigDecimal amount) {
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("Amount must be greater than 0");
+        }
+    }
+
+    private void validateAccountActive(BankAccount account) {
+
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new BadRequestException("Account is not active");
+        }
+    }
+
+    private void validateSufficientBalance(BankAccount account, BigDecimal amount) {
+
+        if (account.getBalance().compareTo(amount) < 0) {
+            throw new BadRequestException("Insufficient balance");
+        }
+    }
+
+    private void validatePagination(int page, int size) {
+
+        if (page < 0) {
+            throw new BadRequestException("Page number cannot be negative");
+        }
+
+        if (size <= 0) {
+            throw new BadRequestException("Page size must be greater than 0");
+        }
+
+        if (size > 50) {
+            throw new BadRequestException("Page size cannot be greater than 50");
+        }
+    }
+
+    private void validateDateRange(LocalDate startDate, LocalDate endDate) {
+
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new BadRequestException("Start date cannot be after end date");
+        }
+    }
+
+    private LocalDateTime toStartDateTime(LocalDate startDate) {
+
+        if (startDate == null) {
+            return null;
+        }
+
+        return startDate.atStartOfDay();
+    }
+
+    private LocalDateTime toEndDateTime(LocalDate endDate) {
+
+        if (endDate == null) {
+            return null;
+        }
+
+        return endDate.atTime(LocalTime.MAX);
+    }
+
+    private Transaction createTransaction(
+            BankAccount account,
+            TransactionType transactionType,
+            BigDecimal amount,
+            String fromAccountNumber,
+            String toAccountNumber,
+            String description
+    ) {
+
+        return Transaction.builder()
+                .referenceNumber(generateUniqueReferenceNumber())
+                .transactionType(transactionType)
+                .status(TransactionStatus.SUCCESS)
+                .amount(amount)
+                .fromAccountNumber(fromAccountNumber)
+                .toAccountNumber(toAccountNumber)
+                .description(description)
+                .bankAccount(account)
+                .build();
+    }
+
+    private String generateUniqueReferenceNumber() {
+
+        String referenceNumber;
+
+        do {
+            String dateTimePart = LocalDateTime.now()
+                    .format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+
+            String randomPart = UUID.randomUUID()
+                    .toString()
+                    .replace("-", "")
+                    .substring(0, 8)
+                    .toUpperCase();
+
+            referenceNumber = "TXN" + dateTimePart + randomPart;
+
+        } while (transactionRepository.existsByReferenceNumber(referenceNumber));
+
+        return referenceNumber;
+    }
+
+    private String getDescriptionOrDefault(String description, String defaultDescription) {
+
+        if (description == null || description.trim().isEmpty()) {
+            return defaultDescription;
+        }
+
+        return description.trim();
+    }
+
+    private TransactionResponse mapToTransactionResponse(Transaction transaction, BigDecimal currentBalance) {
+
+        BankAccount account = transaction.getBankAccount();
+
+        return TransactionResponse.builder()
+                .transactionId(transaction.getId())
+                .referenceNumber(transaction.getReferenceNumber())
+                .accountId(account.getId())
+                .accountNumber(account.getAccountNumber())
+                .transactionType(transaction.getTransactionType())
+                .status(transaction.getStatus())
+                .amount(transaction.getAmount())
+                .currentBalance(currentBalance)
+                .fromAccountNumber(transaction.getFromAccountNumber())
+                .toAccountNumber(transaction.getToAccountNumber())
+                .description(transaction.getDescription())
+                .createdAt(transaction.getCreatedAt())
+                .build();
+    }
+}
+```
+
+---
+
+# 6. Update TransactionController
+
+## File Path
+
+```text
+smart-banking-backend/src/main/java/com/smartbanking/transaction/controller/TransactionController.java
+```
+
+## Complete Code
+
+```java
+package com.smartbanking.transaction.controller;
+
+import com.smartbanking.transaction.dto.DepositRequest;
+import com.smartbanking.transaction.dto.MiniStatementResponse;
+import com.smartbanking.transaction.dto.TransactionResponse;
+import com.smartbanking.transaction.dto.TransferRequest;
+import com.smartbanking.transaction.dto.WithdrawRequest;
+import com.smartbanking.transaction.entity.TransactionType;
+import com.smartbanking.transaction.service.TransactionService;
+import com.smartbanking.util.ApiResponse;
+import com.smartbanking.util.PageResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
+
+@RestController
+@RequestMapping("/api/transactions")
+@RequiredArgsConstructor
+public class TransactionController {
+
+    private final TransactionService transactionService;
+
+    @PostMapping("/deposit")
+    public ResponseEntity<ApiResponse<TransactionResponse>> deposit(
+            @Valid @RequestBody DepositRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.deposit(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount deposited successfully", response));
+    }
+
+    @PostMapping("/withdraw")
+    public ResponseEntity<ApiResponse<TransactionResponse>> withdraw(
+            @Valid @RequestBody WithdrawRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.withdraw(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount withdrawn successfully", response));
+    }
+
+    @PostMapping("/transfer")
+    public ResponseEntity<ApiResponse<TransactionResponse>> transfer(
+            @Valid @RequestBody TransferRequest request,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        TransactionResponse response = transactionService.transfer(request, userEmail);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Amount transferred successfully", response));
+    }
+
+    /*
+     * Logged-in user che all transactions.
+     *
+     * Optional filters:
+     * transactionType = DEPOSIT / WITHDRAW / TRANSFER
+     * startDate = yyyy-MM-dd
+     * endDate = yyyy-MM-dd
+     */
+    @GetMapping("/my")
+    public ResponseEntity<ApiResponse<PageResponse<TransactionResponse>>> getMyTransactions(
+            @RequestParam(required = false) TransactionType transactionType,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate endDate,
+
+            @RequestParam(defaultValue = "0") int page,
+
+            @RequestParam(defaultValue = "10") int size,
+
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        PageResponse<TransactionResponse> response = transactionService.getMyTransactions(
+                userEmail,
+                transactionType,
+                startDate,
+                endDate,
+                page,
+                size
+        );
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Transactions fetched successfully", response));
+    }
+
+    /*
+     * Specific account che transactions.
+     * User फक्त स्वतःच्या account चे transactions पाहू शकतो.
+     */
+    @GetMapping("/account/{accountId}")
+    public ResponseEntity<ApiResponse<PageResponse<TransactionResponse>>> getAccountTransactions(
+            @PathVariable Long accountId,
+
+            @RequestParam(required = false) TransactionType transactionType,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate startDate,
+
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate endDate,
+
+            @RequestParam(defaultValue = "0") int page,
+
+            @RequestParam(defaultValue = "10") int size,
+
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        PageResponse<TransactionResponse> response = transactionService.getAccountTransactions(
+                accountId,
+                userEmail,
+                transactionType,
+                startDate,
+                endDate,
+                page,
+                size
+        );
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Account transactions fetched successfully", response));
+    }
+
+    /*
+     * Mini statement latest 10 transactions दाखवेल.
+     */
+    @GetMapping("/account/{accountId}/mini-statement")
+    public ResponseEntity<ApiResponse<MiniStatementResponse>> getMiniStatement(
+            @PathVariable Long accountId,
+            Authentication authentication
+    ) {
+
+        String userEmail = authentication.getName();
+
+        MiniStatementResponse response = transactionService.getMiniStatement(accountId, userEmail);
+
+        return ResponseEntity
+                .ok(ApiResponse.success("Mini statement fetched successfully", response));
+    }
+}
+```
+
+---
+
+# 7. SecurityConfig Check
+
+Phase 4 मध्ये आपल्याकडे already हे आहे:
+
+```java
+.anyRequest().authenticated()
+```
+
+म्हणून Phase 7 चे APIs automatically JWT protected आहेत.
+
+Optional explicit rule ठेवायची असेल तर:
+
+```java
+.requestMatchers("/api/transactions/**").hasAnyRole("USER", "ADMIN")
+```
+
+But required नाही.
+
+---
+
+# 8. API Usage
+
+## 8.1 Get My Transactions
+
+```http
+GET http://localhost:8080/api/transactions/my
+```
+
+With pagination:
+
+```http
+GET http://localhost:8080/api/transactions/my?page=0&size=10
+```
+
+With type filter:
+
+```http
+GET http://localhost:8080/api/transactions/my?transactionType=DEPOSIT&page=0&size=10
+```
+
+With date filter:
+
+```http
+GET http://localhost:8080/api/transactions/my?startDate=2026-05-01&endDate=2026-05-19&page=0&size=10
+```
+
+With all filters:
+
+```http
+GET http://localhost:8080/api/transactions/my?transactionType=TRANSFER&startDate=2026-05-01&endDate=2026-05-19&page=0&size=10
+```
+
+---
+
+## 8.2 Get Account Transactions
+
+```http
+GET http://localhost:8080/api/transactions/account/1
+```
+
+With filters:
+
+```http
+GET http://localhost:8080/api/transactions/account/1?transactionType=WITHDRAW&startDate=2026-05-01&endDate=2026-05-19&page=0&size=10
+```
+
+---
+
+## 8.3 Get Mini Statement
+
+```http
+GET http://localhost:8080/api/transactions/account/1/mini-statement
+```
+
+Expected response:
+
+```json
+{
+  "success": true,
+  "message": "Mini statement fetched successfully",
+  "data": {
+    "bankName": "Smart Banking System",
+    "userName": "Gaurav Lahamage",
+    "userEmail": "gaurav@gmail.com",
+    "accountId": 1,
+    "accountNumber": "SB1234567890",
+    "accountType": "SAVINGS",
+    "status": "ACTIVE",
+    "currentBalance": 3500.00,
+    "generatedAt": "2026-05-19T20:10:30",
+    "totalTransactions": 5,
+    "transactions": [
+      {
+        "transactionId": 5,
+        "referenceNumber": "TXN20260519190000A1B2C3D4",
+        "accountId": 1,
+        "accountNumber": "SB1234567890",
+        "transactionType": "TRANSFER",
+        "status": "SUCCESS",
+        "amount": 500.00,
+        "currentBalance": 3500.00,
+        "fromAccountNumber": "SB1234567890",
+        "toAccountNumber": "SB9876543210",
+        "description": "Money transfer test",
+        "createdAt": "2026-05-19T19:00:00"
+      }
+    ]
+  },
+  "timestamp": "2026-05-19T20:10:30"
+}
+```
+
+---
+
+# 9. Postman Testing
+
+## Step 1: Login करून token घ्या
+
+```http
+POST http://localhost:8080/api/users/login
+```
+
+Body:
+
+```json
+{
+  "email": "gaurav@gmail.com",
+  "password": "gaurav123"
+}
+```
+
+Response मधून token copy करा.
+
+---
+
+## Step 2: Authorization set करा
+
+Postman मध्ये:
+
+```text
+Authorization tab
+Type: Bearer Token
+Token: paste JWT token
+```
+
+---
+
+## Step 3: My Transactions Test
+
+```http
+GET http://localhost:8080/api/transactions/my?page=0&size=10
+```
+
+Expected:
+
+```json
+{
+  "success": true,
+  "message": "Transactions fetched successfully",
+  "data": {
+    "content": [],
+    "pageNo": 0,
+    "pageSize": 10,
+    "totalElements": 0,
+    "totalPages": 0,
+    "last": true
+  },
+  "timestamp": "..."
+}
+```
+
+जर transactions असतील तर `content` मध्ये list दिसेल.
+
+---
+
+## Step 4: Account-wise Transactions Test
+
+पहिले accounts fetch करा:
+
+```http
+GET http://localhost:8080/api/accounts/my
+```
+
+त्यातून `accountId` copy करा.
+
+Then:
+
+```http
+GET http://localhost:8080/api/transactions/account/1?page=0&size=10
+```
+
+---
+
+## Step 5: Transaction Type Filter Test
+
+```http
+GET http://localhost:8080/api/transactions/my?transactionType=DEPOSIT&page=0&size=10
+```
+
+Allowed values:
+
+```text
+DEPOSIT
+WITHDRAW
+TRANSFER
+```
+
+---
+
+## Step 6: Date Filter Test
+
+```http
+GET http://localhost:8080/api/transactions/my?startDate=2026-05-01&endDate=2026-05-19&page=0&size=10
+```
+
+Date format:
+
+```text
+yyyy-MM-dd
+```
+
+---
+
+## Step 7: Mini Statement Test
+
+```http
+GET http://localhost:8080/api/transactions/account/1/mini-statement
+```
+
+ही API latest 10 transactions देईल.
+
+---
+
+## Step 8: Other User Access Test
+
+1. User A login करा.
+2. User A चा accountId घ्या.
+3. User B login करा.
+4. User B token वापरून User A चा account history access करा:
+
+```http
+GET http://localhost:8080/api/transactions/account/1
+```
+
+Expected:
+
+```json
+{
+  "success": false,
+  "message": "Account not found or you do not have access to this account",
+  "data": null,
+  "timestamp": "..."
+}
+```
+
+---
+
+# 10. MySQL Checking
+
+```sql
+USE smart_banking_db;
+
+SELECT 
+    id,
+    reference_number,
+    transaction_type,
+    status,
+    amount,
+    from_account_number,
+    to_account_number,
+    bank_account_id,
+    created_at
+FROM transactions
+ORDER BY created_at DESC;
+```
+
+Account-wise check:
+
+```sql
+SELECT 
+    t.id,
+    t.transaction_type,
+    t.amount,
+    t.created_at,
+    ba.account_number,
+    u.email
+FROM transactions t
+JOIN bank_accounts ba ON t.bank_account_id = ba.id
+JOIN users u ON ba.user_id = u.id
+ORDER BY t.created_at DESC;
+```
+
+---
+
+# 11. Common Errors and Fixes
+
+## Error 1: 403 Forbidden
+
+Reason:
+
+```text
+JWT token missing किंवा expired आहे.
+```
+
+Fix:
+
+```text
+Login करून fresh token घ्या.
+Postman Authorization मध्ये Bearer Token म्हणून paste करा.
+```
+
+---
+
+## Error 2: Invalid transaction type
+
+Wrong:
+
+```http
+transactionType=deposit
+```
+
+Correct:
+
+```http
+transactionType=DEPOSIT
+```
+
+Enum values uppercase पाहिजेत:
+
+```text
+DEPOSIT
+WITHDRAW
+TRANSFER
+```
+
+---
+
+## Error 3: Date format error
+
+Wrong:
+
+```http
+startDate=19-05-2026
+```
+
+Correct:
+
+```http
+startDate=2026-05-19
+```
+
+Format:
+
+```text
+yyyy-MM-dd
+```
+
+---
+
+## Error 4: Start date cannot be after end date
+
+Wrong:
+
+```http
+startDate=2026-05-20&endDate=2026-05-01
+```
+
+Correct:
+
+```http
+startDate=2026-05-01&endDate=2026-05-20
+```
+
+---
+
+## Error 5: Page size cannot be greater than 50
+
+आपण performance साठी max size 50 ठेवली आहे.
+
+Correct:
+
+```http
+size=10
+```
+
+---
+
+## Error 6: Account not found or no access
+
+Reason:
+
+```text
+accountId wrong आहे
+किंवा account दुसऱ्या user चा आहे.
+```
+
+Fix:
+
+```http
+GET /api/accounts/my
+```
+
+इथून correct accountId घ्या.
+
+---
+
+# 12. Files Created/Updated
+
+```text
+Created:
+
+smart-banking-backend/src/main/java/com/smartbanking/util/PageResponse.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/dto/MiniStatementResponse.java
+
+
+Updated:
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/repository/TransactionRepository.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/TransactionService.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/service/impl/TransactionServiceImpl.java
+
+smart-banking-backend/src/main/java/com/smartbanking/transaction/controller/TransactionController.java
+```
+
+---
+
+# 13. What Was Implemented
+
+```text
+✅ User can view own transactions
+✅ User can view account-wise transactions
+✅ Transaction type filter added
+✅ Date range filter added
+✅ Pagination added
+✅ Mini statement API added
+✅ Latest 10 transactions shown in mini statement
+✅ User ownership check added
+✅ User cannot view other user's transactions
+✅ Proper DTO response added
+✅ Service interface + ServiceImpl pattern followed
+✅ Repository query filtering added
+```
+
+---
+
+# 14. APIs Created
+
+| Method | API                                                    | Access              | Purpose                               |
+| ------ | ------------------------------------------------------ | ------------------- | ------------------------------------- |
+| GET    | `/api/transactions/my`                                 | USER/ADMIN with JWT | Logged-in user चे all transactions    |
+| GET    | `/api/transactions/account/{accountId}`                | USER/ADMIN with JWT | Specific own account transactions     |
+| GET    | `/api/transactions/account/{accountId}/mini-statement` | USER/ADMIN with JWT | Latest 10 transactions mini statement |
+
+Existing Phase 6 APIs still available:
+
+```text
+POST /api/transactions/deposit
+POST /api/transactions/withdraw
+POST /api/transactions/transfer
+```
+
+---
+
+# 15. Git Commands to Push Phase 7
+
+Monorepo root folder मध्ये जा:
+
+```bash
+cd "C:\Users\gaura\OneDrive\Desktop\PROJECTS\Smart Banking System"
+```
+
+Status check:
+
+```bash
+git status
+```
+
+Files add:
+
+```bash
+git add .
+```
+
+Commit:
+
+```bash
+git commit -m "Phase 7: Implement transaction history and mini statement"
+```
+
+Push:
+
+```bash
+git push origin main
+```
+
+---
+
+# 16. Updated PROGRESS SUMMARY for Phase 8
+
+```text
+PROGRESS SUMMARY:
+
+✅ Phase 1 Complete: Requirement analysis done
+✅ GitHub repository planned
+✅ Monorepo structure planned
+✅ Modules finalized
+
+✅ Phase 2 Complete: Spring Boot Backend Setup done
+- Spring Boot backend project created
+- Project name: smart-banking-backend
+- Package name: com.smartbanking
+- Java 17 configured
+- Maven pom.xml created with required dependencies
+- MySQL database configuration added
+- Basic package structure created
+- HealthController test API created
+- Swagger configured
+- Backend running successfully
+
+✅ Phase 3 Complete: Database Design, Entities, Enums, and Repositories done
+- User entity created
+- BankAccount entity created
+- Transaction entity created
+- Role enum created: USER, ADMIN
+- AccountType enum created: SAVINGS, CURRENT
+- AccountStatus enum created: ACTIVE, FROZEN, CLOSED
+- TransactionType enum created: DEPOSIT, WITHDRAW, TRANSFER
+- TransactionStatus enum created: SUCCESS, FAILED, PENDING
+- One User can have many BankAccounts relationship added
+- One BankAccount can have many Transactions relationship added
+- UserRepository created
+- BankAccountRepository created
+- TransactionRepository created
+
+✅ Phase 4 Complete: Authentication Module with JWT + Spring Security done
+- Register API implemented
+- Login API implemented
+- BCrypt password encryption added
+- JWT token generation added
+- JWT authentication filter added
+- CustomUserDetailsService implemented
+- SecurityConfig updated
+- Stateless JWT security configured
+- Role-based access prepared for USER and ADMIN
+- ApiResponse common response structure added
+- GlobalExceptionHandler added
+- Validation added
+- Protected profile API added
+- Postman testing steps completed
+
+✅ Phase 5 Complete: Bank Account Management Module done
+- AccountCreateRequest DTO created
+- AccountResponse DTO created
+- BalanceResponse DTO created
+- AccountService interface created
+- AccountServiceImpl created
+- AccountController created
+- Logged-in user can create bank account
+- User can view own accounts
+- User can check account balance
+- Account number auto-generation added
+- Initial balance set to 0
+- Account status set to ACTIVE
+- Ownership check added
+- User cannot access another user's account
+- Postman testing steps completed
+
+✅ Phase 6 Complete: Banking Transaction Module done
+- DepositRequest DTO created
+- WithdrawRequest DTO created
+- TransferRequest DTO created
+- TransactionResponse DTO created
+- TransactionService interface created
+- TransactionServiceImpl created
+- TransactionController created
+- Deposit money API implemented
+- Withdraw money API implemented
+- Fund transfer API implemented
+- @Transactional added for money operations
+- Amount validation added
+- Account ACTIVE validation added
+- Ownership check added using JWT logged-in user
+- Sufficient balance validation added
+- Receiver account validation added
+- Transaction records saved
+- Transfer creates sender and receiver transaction entries
+- Postman testing steps completed
+
+✅ Phase 7 Complete: Transaction History + Mini Statement done
+- PageResponse DTO created
+- MiniStatementResponse DTO created
+- User can view own transactions
+- User can view account-wise transactions
+- Transaction type filter added
+- Date range filter added
+- Pagination added
+- Mini statement API added
+- Latest 10 transactions returned in mini statement
+- Ownership check added
+- User cannot view other user's transactions
+- Postman testing steps completed
+
+PHASE 8: Admin Module
+
+Next implement admin features:
+
+1. Admin can view all users
+2. Admin can view all accounts
+3. Admin can freeze account
+4. Admin can activate account
+5. Admin can view all transactions
+6. Admin dashboard stats:
+   - Total users
+   - Total accounts
+   - Active accounts
+   - Frozen accounts
+   - Total transactions
+   - Total deposited amount
+   - Total withdrawn amount
+7. APIs:
+   - GET /api/admin/users
+   - GET /api/admin/accounts
+   - PUT /api/admin/accounts/{accountId}/freeze
+   - PUT /api/admin/accounts/{accountId}/activate
+   - GET /api/admin/transactions
+   - GET /api/admin/dashboard
+8. Only ADMIN role can access these APIs
+9. Postman testing with admin token
+10. Give Git commands to push Phase 8
+```
+
+Phase 7 complete ✅
 
 
 
