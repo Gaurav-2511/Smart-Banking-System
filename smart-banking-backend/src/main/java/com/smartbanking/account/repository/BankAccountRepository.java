@@ -26,7 +26,6 @@ public interface BankAccountRepository extends JpaRepository<BankAccount, Long> 
 
     /*
      * Logged-in user email varun accounts fetch karayche.
-     * JWT मधून email मिळतो, म्हणून useful आहे.
      */
     List<BankAccount> findByUserEmail(String email);
 
