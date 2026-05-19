@@ -1,5 +1,7 @@
 package com.smartbanking.config;
 
+import com.smartbanking.security.CustomAccessDeniedHandler;
+import com.smartbanking.security.CustomAuthenticationEntryPoint;
 import com.smartbanking.security.CustomUserDetailsService;
 import com.smartbanking.security.JwtAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
@@ -19,11 +21,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -32,8 +29,10 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-
     private final CustomUserDetailsService customUserDetailsService;
+
+    private final CustomAuthenticationEntryPoint customAuthenticationEntryPoint;
+    private final CustomAccessDeniedHandler customAccessDeniedHandler;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -47,8 +46,19 @@ public class SecurityConfig {
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
 
+                /*
+                 * Custom 401 and 403 response configuration.
+                 */
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(customAuthenticationEntryPoint)
+                        .accessDeniedHandler(customAccessDeniedHandler)
+                )
+
                 .authorizeHttpRequests(auth -> auth
 
+                        /*
+                         * Public APIs
+                         */
                         .requestMatchers(
                                 "/api/health",
                                 "/api/health/**",
@@ -59,11 +69,16 @@ public class SecurityConfig {
                                 "/v3/api-docs/**"
                         ).permitAll()
 
-                        .requestMatchers("/api/accounts/**").hasAnyRole("USER", "ADMIN")
-
-                        .requestMatchers("/api/transactions/**").hasAnyRole("USER", "ADMIN")
-
+                        /*
+                         * Only ADMIN can access admin APIs.
+                         */
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        /*
+                         * USER and ADMIN can access account/transaction APIs.
+                         */
+                        .requestMatchers("/api/accounts/**").hasAnyRole("USER", "ADMIN")
+                        .requestMatchers("/api/transactions/**").hasAnyRole("USER", "ADMIN")
 
                         .anyRequest().authenticated()
                 )
@@ -73,7 +88,6 @@ public class SecurityConfig {
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
 
                 .httpBasic(AbstractHttpConfigurer::disable)
-
                 .formLogin(AbstractHttpConfigurer::disable);
 
         return http.build();
@@ -82,9 +96,9 @@ public class SecurityConfig {
     @Bean
     public AuthenticationProvider authenticationProvider() {
 
-        DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
+        DaoAuthenticationProvider authProvider =
+                new DaoAuthenticationProvider(customUserDetailsService);
 
-        authProvider.setUserDetailsService(customUserDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
 
         return authProvider;
@@ -101,22 +115,5 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
 
         return new BCryptPasswordEncoder();
-    }
-
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-
-        CorsConfiguration configuration = new CorsConfiguration();
-
-        configuration.setAllowedOrigins(List.of("http://localhost:4200"));
-        configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-        configuration.setAllowCredentials(true);
-
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-
-        source.registerCorsConfiguration("/**", configuration);
-
-        return source;
     }
 }
